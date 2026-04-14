@@ -58,6 +58,7 @@ resource foundry 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' = {
   properties: {
     allowProjectManagement: true
     customSubDomainName: foundryName
+    publicNetworkAccess: 'Enabled'
     disableLocalAuth: false
   }
 }
@@ -115,6 +116,7 @@ resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2
 resource searchConnection 'Microsoft.CognitiveServices/accounts/connections@2025-04-01-preview' = {
   name: 'ai-search-connection'
   parent: foundry
+  dependsOn: [embeddingDeployment]
   properties: {
     category: 'CognitiveSearch'
     target: 'https://${searchServiceName}.search.windows.net'
@@ -131,6 +133,7 @@ resource searchConnection 'Microsoft.CognitiveServices/accounts/connections@2025
 resource appInsightsConnection 'Microsoft.CognitiveServices/accounts/connections@2025-04-01-preview' = {
   name: 'app-insights-connection'
   parent: foundry
+  dependsOn: [searchConnection]
   properties: {
     category: 'AppInsights'
     target: appInsightsId
@@ -147,10 +150,12 @@ resource appInsightsConnection 'Microsoft.CognitiveServices/accounts/connections
 }
 
 // ---------- Private Endpoint ----------
+// Must wait for all child resources to complete so the account leaves 'Accepted' state
 resource privateEndpoint 'Microsoft.Network/privateEndpoints@2024-01-01' = {
   name: privateEndpointName
   location: location
   tags: tags
+  dependsOn: [project, appInsightsConnection]
   properties: {
     subnet: {
       id: subnetId
