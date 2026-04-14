@@ -74,6 +74,7 @@ module containerApps 'modules/container-apps.bicep' = {
     chatDeploymentName: aiFoundry.outputs.chatDeploymentName
     embeddingDeploymentName: aiFoundry.outputs.embeddingDeploymentName
     foundryEndpoint: aiFoundry.outputs.foundryEndpoint
+    projectEndpoint: aiFoundry.outputs.projectEndpoint
     searchEndpoint: aiSearch.outputs.searchEndpointUrl
   }
 }
@@ -213,7 +214,7 @@ output AZURE_SEARCH_ENDPOINT string = aiSearch.outputs.searchEndpointUrl
 output AZURE_SEARCH_INDEX_NAME string = 'documents'
 
 @description('AI Foundry endpoint for azd.')
-output AZURE_AI_PROJECT_ENDPOINT string = aiFoundry.outputs.foundryEndpoint
+output AZURE_AI_PROJECT_ENDPOINT string = aiFoundry.outputs.projectEndpoint
 
 @description('Backend container app FQDN for azd.')
 output BACKEND_FQDN string = containerApps.outputs.backendFqdn

@@ -22,6 +22,9 @@ param managedIdentityId string
 @description('Azure AI Foundry endpoint URL (also serves as OpenAI endpoint).')
 param foundryEndpoint string
 
+@description('Project-scoped endpoint for the AI Projects SDK.')
+param projectEndpoint string
+
 @description('Azure AI Search endpoint URL.')
 param searchEndpoint string
 
@@ -157,7 +160,7 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
             }
             {
               name: 'AZURE_AI_PROJECT_ENDPOINT'
-              value: foundryEndpoint
+              value: projectEndpoint
             }
             {
               name: 'AZURE_SEARCH_ENDPOINT'

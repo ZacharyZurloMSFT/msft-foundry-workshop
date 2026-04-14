@@ -71,16 +71,11 @@ jobs:
 
           echo "📡 Configuring backend environment variables..."
 
-          # Get the AI Foundry API data-plane endpoint (NOT the cognitiveservices management endpoint)
-          FOUNDRY_API=$(az cognitiveservices account show \
-            --name "$FOUNDRY_NAME" \
-            --resource-group "$RG" \
-            --query 'properties.endpoints."AI Foundry API"' -o tsv 2>/dev/null || echo "")
-
           # Construct the project-scoped endpoint for the AI Projects SDK
-          PROJECT_ENDPOINT="${FOUNDRY_API}/projects/${PROJECT_NAME}"
+          # Format: https://{account-name}.services.ai.azure.com/api/projects/{project-name}
+          PROJECT_ENDPOINT="https://${FOUNDRY_NAME}.services.ai.azure.com/api/projects/project-${AZURE_ENV_NAME}"
 
-          # The Foundry endpoint also serves as the OpenAI endpoint for model inference
+          # The CognitiveServices endpoint for OpenAI model inference
           OPENAI_ENDPOINT=$(az cognitiveservices account show \
             --name "$FOUNDRY_NAME" \
             --resource-group "$RG" \
@@ -124,12 +119,9 @@ jobs:
           # Install SDK
           pip install azure-ai-projects azure-identity azure-search-documents 2>&1 | tail -3
           
-          # Get AI Foundry API endpoint and construct project-scoped endpoint
-          FOUNDRY_API=$(az cognitiveservices account show \
-            --name "$FOUNDRY_NAME" \
-            --resource-group "$RG" \
-            --query 'properties.endpoints."AI Foundry API"' -o tsv)
-          export AZURE_AI_PROJECT_ENDPOINT="${FOUNDRY_API}/projects/project-${AZURE_ENV_NAME}"
+          # Construct the project-scoped endpoint for the AI Projects SDK
+          # Format: https://{account-name}.services.ai.azure.com/api/projects/{project-name}
+          export AZURE_AI_PROJECT_ENDPOINT="https://${FOUNDRY_NAME}.services.ai.azure.com/api/projects/project-${AZURE_ENV_NAME}"
           export AZURE_SEARCH_ENDPOINT="https://search-${AZURE_ENV_NAME}.search.windows.net"
           export AZURE_SEARCH_INDEX_NAME="documents"
           export AZURE_OPENAI_CHAT_DEPLOYMENT="gpt-5-mini"

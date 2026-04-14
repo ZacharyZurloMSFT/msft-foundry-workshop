@@ -197,8 +197,11 @@ output foundryResourceId string = foundry.id
 @description('Foundry account name.')
 output foundryName string = foundry.name
 
-@description('Endpoint URL of the Foundry account.')
+@description('Endpoint URL of the Foundry account (CognitiveServices endpoint for OpenAI inference).')
 output foundryEndpoint string = foundry.properties.endpoint
+
+@description('Project-scoped endpoint for the AI Projects SDK (https://{name}.services.ai.azure.com/api/projects/{project}).')
+output projectEndpoint string = 'https://${foundryName}.services.ai.azure.com/api/projects/${projectName}'
 
 @description('Resource ID of the Foundry Project.')
 output projectId string = project.id
