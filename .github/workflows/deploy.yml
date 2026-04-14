@@ -127,6 +127,10 @@ jobs:
             --scope "$FOUNDRY_ID" \
             --only-show-errors 2>/dev/null || true
 
+          # Wait for RBAC propagation (can take up to 5 minutes)
+          echo "⏳ Waiting 90s for RBAC propagation..."
+          sleep 90
+
           # Install SDK
           pip install azure-ai-projects azure-identity azure-search-documents 2>&1 | tail -3
           
@@ -143,8 +147,20 @@ jobs:
           
           echo "📡 Foundry: $AZURE_AI_PROJECT_ENDPOINT"
           
-          # Run setup script
-          python scripts/setup-agent.py || echo "⚠️ Agent setup failed — may need manual connection setup in Foundry portal"
+          # Run setup script with retries for RBAC propagation
+          for attempt in 1 2 3; do
+            echo "🔄 Agent setup attempt $attempt/3..."
+            if python scripts/setup-agent.py; then
+              echo "✅ Agent setup succeeded"
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "⏳ Retrying in 60s..."
+              sleep 60
+            else
+              echo "⚠️ Agent setup failed after 3 attempts — may need manual connection setup in Foundry portal"
+            fi
+          done
           
           # If agent was created, set the AGENT_ID on the backend
           if [ -f src/backend/.agent-config.json ]; then
