@@ -75,7 +75,7 @@ def create_agent(project_client) -> str:
         )
 
         # Create the agent
-        agent = project_client.agents.create_agent(
+        agent = project_client.agents.create(
             model=model,
             name="rag-chat-agent",
             instructions=(
