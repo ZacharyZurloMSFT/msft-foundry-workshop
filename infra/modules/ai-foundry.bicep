@@ -81,6 +81,7 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-previ
 resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-04-01-preview' = {
   parent: foundry
   name: 'gpt-5-mini'
+  dependsOn: [project]
   sku: {
     name: 'GlobalStandard'
     capacity: 10
@@ -155,7 +156,7 @@ resource privateEndpoint 'Microsoft.Network/privateEndpoints@2024-01-01' = {
   name: privateEndpointName
   location: location
   tags: tags
-  dependsOn: [project, appInsightsConnection]
+  dependsOn: [appInsightsConnection]
   properties: {
     subnet: {
       id: subnetId
