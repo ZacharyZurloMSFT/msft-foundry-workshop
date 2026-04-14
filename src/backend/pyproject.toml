@@ -1,0 +1,17 @@
+[project]
+name = "foundry-rag-backend"
+version = "0.1.0"
+description = "RAG chat backend using Microsoft Foundry Agent Service"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "azure-ai-projects>=1.0.0b7",
+    "azure-identity>=1.19.0",
+    "azure-search-documents>=11.6.0",
+    "pypdf>=4.0.0",
+    "python-docx>=1.0.0",
+    "python-multipart>=0.0.6",
+]

@@ -1,0 +1,45 @@
+Contoso Electronics — Product Catalog 2026
+
+LAPTOPS
+
+ProBook X14 — $899
+14" FHD display, Intel Core i5-1340P, 16GB RAM, 512GB SSD. Battery life: 12 hours. Weight: 3.1 lbs. 2-year warranty. Ideal for business professionals. Available in silver and midnight blue.
+
+ProBook X16 Pro — $1,399
+16" 2K display, Intel Core i7-13700H, 32GB RAM, 1TB SSD, NVIDIA RTX 4050. Battery life: 8 hours. Weight: 4.4 lbs. 3-year warranty with accidental damage protection. For developers and creative professionals.
+
+EduBook Lite — $449
+11.6" HD display, Intel Celeron N5100, 8GB RAM, 128GB eMMC. Battery life: 14 hours. Weight: 2.6 lbs. 1-year warranty. Ruggedized design with spill-resistant keyboard. Built for education environments.
+
+MONITORS
+
+UltraView 27 4K — $549
+27" 4K IPS, 60Hz, USB-C with 65W charging, built-in speakers. VESA mount compatible. 3-year warranty. Color accuracy: 99% sRGB.
+
+UltraView 34 Ultrawide — $799
+34" UWQHD (3440x1440), 100Hz, curved VA panel, USB-C hub with ethernet. Height adjustable stand. 3-year warranty.
+
+ACCESSORIES
+
+ErgoDesk Standing Converter — $279
+Sits on existing desk. Adjustable height 6-20 inches. Holds up to 35 lbs. Keyboard tray included. Ships assembled.
+
+CloudComfort Headset — $129
+Active noise cancellation, Bluetooth 5.3, 30-hour battery, USB-C charging. Certified for Microsoft Teams and Zoom. Foldable design with carry case. 1-year warranty.
+
+PowerDock Pro — $199
+Thunderbolt 4 docking station. Dual 4K output, 96W laptop charging, 2x USB-A, 1x USB-C, SD card reader, ethernet. Compatible with Windows and macOS.
+
+OUTDOOR GEAR
+
+TrailMaster 45L Backpack — $159
+45-liter capacity, waterproof ripstop nylon, ventilated back panel, rain cover included. Weight: 3.3 lbs. Fits laptops up to 15". Lifetime warranty against manufacturing defects.
+
+SolarCharge 20W Panel — $89
+Portable solar panel, 20W output, dual USB ports, foldable design. Weight: 1.2 lbs. Charges a phone in approximately 2.5 hours in direct sunlight. IPX4 water resistant. 2-year warranty.
+
+RETURN POLICY
+All products may be returned within 30 days of purchase for a full refund. Items must be in original packaging. Opened software is non-refundable. Warranty claims should be submitted through support.contoso.com or by calling 1-800-555-TECH.
+
+SHIPPING
+Free standard shipping on orders over $50. Standard delivery: 5-7 business days. Express delivery: 2-3 business days ($12.99). Next-day delivery available in select metro areas ($24.99).

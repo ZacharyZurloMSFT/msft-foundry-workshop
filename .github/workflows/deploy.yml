@@ -1,0 +1,166 @@
+name: Deploy Infrastructure & Application
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - 'src/**'
+      - '.github/workflows/deploy.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  AZURE_PRINCIPAL_ID: ${{ vars.AZURE_PRINCIPAL_ID }}
+  AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME || 'dev' }}
+  AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'centralus' }}
+
+jobs:
+  deploy:
+    name: Provision & Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install azd
+        uses: Azure/setup-azd@v2
+
+      - name: Provision & Deploy
+        run: |
+          set -e
+          RG="rg-${AZURE_ENV_NAME}"
+
+          # Auth
+          azd auth login \
+            --client-id "$AZURE_CLIENT_ID" \
+            --federated-credential-provider github \
+            --tenant-id "$AZURE_TENANT_ID"
+
+          # Create/select environment
+          azd env new "$AZURE_ENV_NAME" --location "$AZURE_LOCATION" --subscription "$AZURE_SUBSCRIPTION_ID" --no-prompt || true
+          azd env config set infra.parameters.principalId "$AZURE_PRINCIPAL_ID"
+
+          # Provision infrastructure
+          echo "🏗️ Provisioning infrastructure..."
+          azd provision --no-prompt
+
+          # Deploy application
+          echo "🚀 Deploying application..."
+          azd deploy --no-prompt
+
+      - name: Configure backend environment variables
+        run: |
+          set -e
+          RG="rg-${AZURE_ENV_NAME}"
+          BACKEND_APP="ca-backend-${AZURE_ENV_NAME}"
+
+          echo "📡 Configuring backend environment variables..."
+
+          # Get Foundry endpoint (AI Foundry API endpoint, NOT cognitiveservices endpoint)
+          FOUNDRY_ENDPOINT=$(az cognitiveservices account show \
+            --name "project-${AZURE_ENV_NAME}" \
+            --resource-group "$RG" \
+            --query 'properties.endpoints."AI Foundry API"' -o tsv 2>/dev/null || echo "")
+
+          # Get OpenAI endpoint
+          OPENAI_ENDPOINT=$(az cognitiveservices account show \
+            --name "oai-${AZURE_ENV_NAME}" \
+            --resource-group "$RG" \
+            --query "properties.endpoint" -o tsv 2>/dev/null || echo "")
+
+          # Construct search endpoint from name (hostName is null for private endpoint services)
+          SEARCH_ENDPOINT="https://search-${AZURE_ENV_NAME}.search.windows.net"
+
+          # Get managed identity client ID
+          IDENTITY_CLIENT_ID=$(az identity list \
+            --resource-group "$RG" \
+            --query '[0].clientId' -o tsv 2>/dev/null || echo "")
+
+          echo "  Foundry:  ${FOUNDRY_ENDPOINT:-not found}"
+          echo "  OpenAI:   ${OPENAI_ENDPOINT:-not found}"
+          echo "  Search:   ${SEARCH_ENDPOINT}"
+          echo "  Identity: ${IDENTITY_CLIENT_ID:-not found}"
+
+          # Set env vars on backend container app
+          az containerapp update \
+            --name "$BACKEND_APP" \
+            --resource-group "$RG" \
+            --set-env-vars \
+              "AZURE_AI_PROJECT_ENDPOINT=${FOUNDRY_ENDPOINT}" \
+              "AZURE_OPENAI_ENDPOINT=${OPENAI_ENDPOINT}" \
+              "AZURE_SEARCH_ENDPOINT=${SEARCH_ENDPOINT}" \
+              "AZURE_SEARCH_INDEX_NAME=documents" \
+              "AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-5-mini" \
+              "AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-small" \
+              "AZURE_MANAGED_IDENTITY_CLIENT_ID=${IDENTITY_CLIENT_ID}"
+
+          echo "✅ Backend configured!"
+
+
+
+      - name: Connect AI Search & OpenAI to Foundry
+        run: |
+          chmod +x scripts/connect-search.sh
+          ./scripts/connect-search.sh "rg-${AZURE_ENV_NAME}" "${AZURE_ENV_NAME}" || echo "⚠️ Connection setup failed — may already exist"
+
+      - name: Setup Foundry Agent
+        run: |
+          set -e
+          RG="rg-${AZURE_ENV_NAME}"
+          BACKEND_APP="ca-backend-${AZURE_ENV_NAME}"
+          
+          # Install SDK
+          pip install azure-ai-projects azure-identity azure-search-documents 2>&1 | tail -3
+          
+          # Get endpoints
+          export AZURE_AI_PROJECT_ENDPOINT=$(az cognitiveservices account show \
+            --name "project-${AZURE_ENV_NAME}" \
+            --resource-group "$RG" \
+            --query 'properties.endpoints."AI Foundry API"' -o tsv)
+          export AZURE_SEARCH_ENDPOINT="https://search-${AZURE_ENV_NAME}.search.windows.net"
+          export AZURE_SEARCH_INDEX_NAME="documents"
+          export AZURE_OPENAI_CHAT_DEPLOYMENT="gpt-5-mini"
+          export AZURE_OPENAI_ENDPOINT=$(az cognitiveservices account show \
+            --name "oai-${AZURE_ENV_NAME}" \
+            --resource-group "$RG" \
+            --query "properties.endpoint" -o tsv)
+          
+          echo "📡 Foundry: $AZURE_AI_PROJECT_ENDPOINT"
+          
+          # Run setup script
+          python scripts/setup-agent.py || echo "⚠️ Agent setup failed — may need manual connection setup in Foundry portal"
+          
+          # If agent was created, set the AGENT_ID on the backend
+          if [ -f src/backend/.agent-config.json ]; then
+            AGENT_ID=$(python3 -c "import json; print(json.load(open('src/backend/.agent-config.json'))['agent_id'])")
+            echo "Setting AGENT_ID=$AGENT_ID on backend"
+            az containerapp update \
+              --name "$BACKEND_APP" \
+              --resource-group "$RG" \
+              --set-env-vars "AGENT_ID=$AGENT_ID"
+            echo "✅ Agent configured on backend"
+          fi
+
+      - name: Print deployment URLs
+        run: |
+          RG="rg-${AZURE_ENV_NAME}"
+          FRONTEND_FQDN=$(az containerapp show --name "ca-frontend-${AZURE_ENV_NAME}" --resource-group "$RG" --query "properties.configuration.ingress.fqdn" -o tsv 2>/dev/null || echo "unknown")
+          BACKEND_FQDN=$(az containerapp show --name "ca-backend-${AZURE_ENV_NAME}" --resource-group "$RG" --query "properties.configuration.ingress.fqdn" -o tsv 2>/dev/null || echo "unknown")
+          echo ""
+          echo "========================================="
+          echo "  🌐 Frontend: https://${FRONTEND_FQDN}"
+          echo "  📡 Backend:  https://${BACKEND_FQDN}"
+          echo "========================================="
