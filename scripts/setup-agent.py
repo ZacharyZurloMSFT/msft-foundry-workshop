@@ -51,6 +51,7 @@ def create_agent(project_client) -> str:
         from azure.ai.projects.models import (
             AzureAISearchTool,
             AzureAISearchToolResource,
+            AISearchIndexResource,
             ConnectionType,
         )
 
@@ -62,11 +63,14 @@ def create_agent(project_client) -> str:
         logger.info(f"Using search connection: {search_connection.id}")
 
         # Configure search tool
-        search_tool = AzureAISearchTool()
-        search_tool.add_index(
-            AzureAISearchToolResource(
-                index_connection_id=search_connection.id,
-                index_name=search_index,
+        search_tool = AzureAISearchTool(
+            azure_ai_search=AzureAISearchToolResource(
+                indexes=[
+                    AISearchIndexResource(
+                        project_connection_id=search_connection.id,
+                        index_name=search_index,
+                    )
+                ]
             )
         )
 
@@ -79,8 +83,7 @@ def create_agent(project_client) -> str:
                 "provided documents. Always cite your sources with specific quotes "
                 "or references. If the answer is not in the documents, say so clearly."
             ),
-            tools=search_tool.definitions,
-            tool_resources=search_tool.resources,
+            tools=[search_tool],
         )
 
         logger.info(f"✅ Agent created: {agent.id}")
