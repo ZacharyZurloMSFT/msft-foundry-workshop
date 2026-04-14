@@ -103,7 +103,6 @@ resource aiDeveloperDeployer 'Microsoft.Authorization/roleAssignments@2022-04-01
   scope: aiFoundryResource
   properties: {
     principalId: deployingPrincipalId
-    principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '64702f94-c441-49e6-a78b-ef80e0188fee')
   }
 }
