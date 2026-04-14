@@ -97,7 +97,7 @@ module security 'modules/security.bicep' = {
     storageAccountId: storage.outputs.storageAccountId
     aiFoundryId: aiFoundry.outputs.foundryResourceId
     keyVaultId: keyvault.outputs.keyVaultId
-    
+    deployingPrincipalId: principalId
   }
 }
 

@@ -30,6 +30,9 @@ param aiFoundryId string
 @description('Resource ID of the Container Registry. Leave empty to skip AcrPull assignment.')
 param containerRegistryId string = ''
 
+@description('Object ID of the deploying principal (e.g. GitHub Actions service principal). Leave empty to skip.')
+param deployingPrincipalId string = ''
+
 // ---------- Managed Identity ----------
 
 resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
@@ -91,6 +94,18 @@ resource aiDeveloper 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 
 resource aiFoundryResource 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' existing = {
   name: last(split(aiFoundryId, '/'))
+}
+
+// ---------- Azure AI Developer for deploying principal (CI/CD) ----------
+
+resource aiDeveloperDeployer 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(deployingPrincipalId)) {
+  name: guid(aiFoundryId, deployingPrincipalId, '64702f94-c441-49e6-a78b-ef80e0188fee')
+  scope: aiFoundryResource
+  properties: {
+    principalId: deployingPrincipalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '64702f94-c441-49e6-a78b-ef80e0188fee')
+  }
 }
 
 // ---------- AcrPull on Container Registry (conditional) ----------
