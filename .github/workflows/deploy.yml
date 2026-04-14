@@ -66,22 +66,17 @@ jobs:
           set -e
           RG="rg-${AZURE_ENV_NAME}"
           BACKEND_APP="ca-backend-${AZURE_ENV_NAME}"
+          FOUNDRY_NAME="foundry-${AZURE_ENV_NAME}"
 
           echo "📡 Configuring backend environment variables..."
 
-          # Get Foundry endpoint (AI Foundry API endpoint, NOT cognitiveservices endpoint)
+          # Get Foundry endpoint (models are deployed on the Foundry account)
           FOUNDRY_ENDPOINT=$(az cognitiveservices account show \
-            --name "project-${AZURE_ENV_NAME}" \
-            --resource-group "$RG" \
-            --query 'properties.endpoints."AI Foundry API"' -o tsv 2>/dev/null || echo "")
-
-          # Get OpenAI endpoint
-          OPENAI_ENDPOINT=$(az cognitiveservices account show \
-            --name "oai-${AZURE_ENV_NAME}" \
+            --name "$FOUNDRY_NAME" \
             --resource-group "$RG" \
             --query "properties.endpoint" -o tsv 2>/dev/null || echo "")
 
-          # Construct search endpoint from name (hostName is null for private endpoint services)
+          # Construct search endpoint from name
           SEARCH_ENDPOINT="https://search-${AZURE_ENV_NAME}.search.windows.net"
 
           # Get managed identity client ID
@@ -90,7 +85,6 @@ jobs:
             --query '[0].clientId' -o tsv 2>/dev/null || echo "")
 
           echo "  Foundry:  ${FOUNDRY_ENDPOINT:-not found}"
-          echo "  OpenAI:   ${OPENAI_ENDPOINT:-not found}"
           echo "  Search:   ${SEARCH_ENDPOINT}"
           echo "  Identity: ${IDENTITY_CLIENT_ID:-not found}"
 
@@ -100,7 +94,7 @@ jobs:
             --resource-group "$RG" \
             --set-env-vars \
               "AZURE_AI_PROJECT_ENDPOINT=${FOUNDRY_ENDPOINT}" \
-              "AZURE_OPENAI_ENDPOINT=${OPENAI_ENDPOINT}" \
+              "AZURE_OPENAI_ENDPOINT=${FOUNDRY_ENDPOINT}" \
               "AZURE_SEARCH_ENDPOINT=${SEARCH_ENDPOINT}" \
               "AZURE_SEARCH_INDEX_NAME=documents" \
               "AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-5-mini" \
@@ -109,34 +103,25 @@ jobs:
 
           echo "✅ Backend configured!"
 
-
-
-      - name: Connect AI Search & OpenAI to Foundry
-        run: |
-          chmod +x scripts/connect-search.sh
-          ./scripts/connect-search.sh "rg-${AZURE_ENV_NAME}" "${AZURE_ENV_NAME}" || echo "⚠️ Connection setup failed — may already exist"
-
       - name: Setup Foundry Agent
         run: |
           set -e
           RG="rg-${AZURE_ENV_NAME}"
           BACKEND_APP="ca-backend-${AZURE_ENV_NAME}"
+          FOUNDRY_NAME="foundry-${AZURE_ENV_NAME}"
           
           # Install SDK
           pip install azure-ai-projects azure-identity azure-search-documents 2>&1 | tail -3
           
-          # Get endpoints
+          # Get Foundry endpoint (models and project are on this account)
           export AZURE_AI_PROJECT_ENDPOINT=$(az cognitiveservices account show \
-            --name "project-${AZURE_ENV_NAME}" \
+            --name "$FOUNDRY_NAME" \
             --resource-group "$RG" \
-            --query 'properties.endpoints."AI Foundry API"' -o tsv)
+            --query "properties.endpoint" -o tsv)
           export AZURE_SEARCH_ENDPOINT="https://search-${AZURE_ENV_NAME}.search.windows.net"
           export AZURE_SEARCH_INDEX_NAME="documents"
           export AZURE_OPENAI_CHAT_DEPLOYMENT="gpt-5-mini"
-          export AZURE_OPENAI_ENDPOINT=$(az cognitiveservices account show \
-            --name "oai-${AZURE_ENV_NAME}" \
-            --resource-group "$RG" \
-            --query "properties.endpoint" -o tsv)
+          export AZURE_OPENAI_ENDPOINT="$AZURE_AI_PROJECT_ENDPOINT"
           
           echo "📡 Foundry: $AZURE_AI_PROJECT_ENDPOINT"
           

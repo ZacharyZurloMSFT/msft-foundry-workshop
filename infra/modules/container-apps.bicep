@@ -19,8 +19,8 @@ param logAnalyticsWorkspaceId string
 @description('Resource ID of a user-assigned managed identity for ACR pull and Azure service auth.')
 param managedIdentityId string
 
-@description('Azure OpenAI endpoint URL.')
-param openAiEndpoint string
+@description('Azure AI Foundry endpoint URL (also serves as OpenAI endpoint).')
+param foundryEndpoint string
 
 @description('Azure AI Search endpoint URL.')
 param searchEndpoint string
@@ -153,7 +153,11 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
           env: [
             {
               name: 'AZURE_OPENAI_ENDPOINT'
-              value: openAiEndpoint
+              value: foundryEndpoint
+            }
+            {
+              name: 'AZURE_AI_PROJECT_ENDPOINT'
+              value: foundryEndpoint
             }
             {
               name: 'AZURE_SEARCH_ENDPOINT'

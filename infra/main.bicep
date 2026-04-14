@@ -38,6 +38,12 @@ module aiFoundry 'modules/ai-foundry.bicep' = {
     // managedIdentityId intentionally omitted (uses default '') to avoid circular dependency:
     // security depends on aiFoundry.outputs.foundryResourceId, so aiFoundry cannot depend on security.
     // The managed identity is assigned RBAC on the Foundry Hub via the security module instead.
+
+    // Connections: AI Search + Application Insights
+    searchServiceId: aiSearch.outputs.searchServiceId
+    searchServiceName: aiSearch.outputs.searchServiceName
+    appInsightsId: monitoring.outputs.appInsightsId
+    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
   }
 }
 
@@ -65,9 +71,9 @@ module containerApps 'modules/container-apps.bicep' = {
     acaSubnetId: networking.outputs.subnetAcaId
     logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsId
     managedIdentityId: security.outputs.managedIdentityId
-    chatDeploymentName: openai.outputs.chatDeploymentName
-    embeddingDeploymentName: openai.outputs.embeddingDeploymentName
-    openAiEndpoint: openai.outputs.openaiEndpoint
+    chatDeploymentName: aiFoundry.outputs.chatDeploymentName
+    embeddingDeploymentName: aiFoundry.outputs.embeddingDeploymentName
+    foundryEndpoint: aiFoundry.outputs.foundryEndpoint
     searchEndpoint: aiSearch.outputs.searchEndpointUrl
   }
 }
@@ -136,21 +142,8 @@ module aiSearch 'modules/ai-search.bicep' = {
   }
 }
 
-// ──────────────────────────────────────
-// Azure OpenAI
-// ──────────────────────────────────────
-module openai 'modules/openai.bicep' = {
-  name: 'openai'
-  params: {
-    environmentName: environmentName
-    location: location
-    tags: tags
-    subnetId: networking.outputs.subnetPrivateEndpointsId
-    privateDnsZoneId: networking.outputs.dnsZoneOpenAiId
-    principalId: principalId
-  }
-}
-@description('Resource ID of the AI Foundry Hub.')
+
+@description('Resource ID of the AI Foundry account.')
 output aiFoundryResourceId string = aiFoundry.outputs.foundryResourceId
 
 @description('Resource ID of the AI Foundry Project.')
@@ -159,20 +152,14 @@ output aiFoundryProjectId string = aiFoundry.outputs.projectId
 @description('Name of the AI Foundry Project.')
 output aiFoundryProjectName string = aiFoundry.outputs.projectName
 
-@description('Discovery URL endpoint for the AI Foundry Hub.')
+@description('Endpoint URL of the AI Foundry account (also serves as OpenAI endpoint).')
 output aiFoundryEndpointUrl string = aiFoundry.outputs.foundryEndpoint
 
-@description('Resource ID of the Azure OpenAI account.')
-output openAiId string = openai.outputs.openaiId
-
-@description('Endpoint URL of the Azure OpenAI account.')
-output openAiEndpoint string = openai.outputs.openaiEndpoint
-
 @description('Name of the chat model deployment.')
-output chatDeploymentName string = openai.outputs.chatDeploymentName
+output chatDeploymentName string = aiFoundry.outputs.chatDeploymentName
 
 @description('Name of the embedding model deployment.')
-output embeddingDeploymentName string = openai.outputs.embeddingDeploymentName
+output embeddingDeploymentName string = aiFoundry.outputs.embeddingDeploymentName
 
 @description('Resource ID of the Azure AI Search service.')
 output searchId string = aiSearch.outputs.searchServiceId
@@ -216,8 +203,8 @@ output managedIdentityClientId string = security.outputs.managedIdentityClientId
 @description('ACR login server endpoint for azd deploy.')
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = containerApps.outputs.acrLoginServer
 
-@description('Azure OpenAI endpoint for azd.')
-output AZURE_OPENAI_ENDPOINT string = openai.outputs.openaiEndpoint
+@description('Azure AI Foundry endpoint (serves as both Foundry and OpenAI endpoint).')
+output AZURE_OPENAI_ENDPOINT string = aiFoundry.outputs.foundryEndpoint
 
 @description('Azure AI Search endpoint for azd.')
 output AZURE_SEARCH_ENDPOINT string = aiSearch.outputs.searchEndpointUrl
@@ -225,7 +212,7 @@ output AZURE_SEARCH_ENDPOINT string = aiSearch.outputs.searchEndpointUrl
 @description('Search index name used by the application.')
 output AZURE_SEARCH_INDEX_NAME string = 'documents'
 
-@description('AI Foundry project endpoint for azd.')
+@description('AI Foundry endpoint for azd.')
 output AZURE_AI_PROJECT_ENDPOINT string = aiFoundry.outputs.foundryEndpoint
 
 @description('Backend container app FQDN for azd.')

@@ -1,5 +1,5 @@
-// Microsoft Foundry resource + Project (NOT legacy AI Hub/Project)
-// Uses Microsoft.CognitiveServices/accounts with kind: 'AIServices'
+// Microsoft Foundry account + Project (child resource) + Connections
+// Based on: https://github.com/microsoft-foundry/foundry-samples/blob/main/infrastructure/infrastructure-setup-bicep/
 
 @description('Environment name used for resource naming.')
 param environmentName string
@@ -16,22 +16,29 @@ param subnetId string
 @description('Resource ID of the private DNS zone for the Foundry private endpoint.')
 param privateDnsZoneId string
 
-
-
-
-
-
-
-
 @description('Resource ID of a user-assigned managed identity.')
 param managedIdentityId string = ''
+
+// ---------- Connection parameters ----------
+
+@description('Resource ID of the Azure AI Search service to connect.')
+param searchServiceId string
+
+@description('Name of the Azure AI Search service.')
+param searchServiceName string
+
+@description('Resource ID of the Application Insights instance to connect.')
+param appInsightsId string
+
+@description('Application Insights connection string.')
+param appInsightsConnectionString string
 
 // ---------- Naming ----------
 var foundryName = 'foundry-${environmentName}'
 var projectName = 'project-${environmentName}'
 var privateEndpointName = 'pep-foundry-${environmentName}'
 
-// ---------- Microsoft Foundry Resource ----------
+// ---------- Microsoft Foundry Account ----------
 resource foundry 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' = {
   name: foundryName
   location: location
@@ -49,39 +56,102 @@ resource foundry 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' = {
     }
   }
   properties: {
+    allowProjectManagement: true
     customSubDomainName: foundryName
     publicNetworkAccess: 'Disabled'
+    disableLocalAuth: false
     networkAcls: {
       defaultAction: 'Deny'
     }
   }
 }
 
-// ---------- Foundry Project ----------
-resource project 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' = {
-  dependsOn: [foundry]
+// ---------- Foundry Project (child resource) ----------
+resource project 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-preview' = {
   name: projectName
+  parent: foundry
   location: location
   tags: tags
-  kind: 'AIServices'
-  sku: {
-    name: 'S0'
-  }
   identity: {
     type: 'SystemAssigned'
   }
+  properties: {}
+}
+
+// ---------- Model Deployments (on Foundry account) ----------
+
+@description('GPT-5-mini deployment for chat completion')
+resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-04-01-preview' = {
+  parent: foundry
+  name: 'gpt-5-mini'
+  sku: {
+    name: 'GlobalStandard'
+    capacity: 10
+  }
   properties: {
-    customSubDomainName: projectName
-    publicNetworkAccess: 'Disabled'
-    networkAcls: {
-      defaultAction: 'Deny'
+    model: {
+      format: 'OpenAI'
+      name: 'gpt-5-mini'
+      version: '2025-08-07'
+    }
+  }
+}
+
+@description('text-embedding-3-small deployment for embeddings')
+resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-04-01-preview' = {
+  parent: foundry
+  name: 'text-embedding-3-small'
+  dependsOn: [chatDeployment]
+  sku: {
+    name: 'GlobalStandard'
+    capacity: 10
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: 'text-embedding-3-small'
+      version: '1'
+    }
+  }
+}
+
+// ---------- Connection: Azure AI Search ----------
+resource searchConnection 'Microsoft.CognitiveServices/accounts/connections@2025-04-01-preview' = {
+  name: 'ai-search-connection'
+  parent: foundry
+  properties: {
+    category: 'CognitiveSearch'
+    target: 'https://${searchServiceName}.search.windows.net'
+    authType: 'AAD'
+    isSharedToAll: true
+    metadata: {
+      ApiType: 'Azure'
+      ResourceId: searchServiceId
+    }
+  }
+}
+
+// ---------- Connection: Application Insights ----------
+resource appInsightsConnection 'Microsoft.CognitiveServices/accounts/connections@2025-04-01-preview' = {
+  name: 'app-insights-connection'
+  parent: foundry
+  properties: {
+    category: 'AppInsights'
+    target: appInsightsId
+    authType: 'ApiKey'
+    isSharedToAll: true
+    credentials: {
+      key: appInsightsConnectionString
+    }
+    metadata: {
+      ApiType: 'Azure'
+      ResourceId: appInsightsId
     }
   }
 }
 
 // ---------- Private Endpoint ----------
 resource privateEndpoint 'Microsoft.Network/privateEndpoints@2024-01-01' = {
-  dependsOn: [foundry, project]
   name: privateEndpointName
   location: location
   tags: tags
@@ -119,13 +189,13 @@ resource privateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneG
 }
 
 // ---------- Outputs ----------
-@description('Resource ID of the Foundry resource.')
+@description('Resource ID of the Foundry account.')
 output foundryResourceId string = foundry.id
 
-@description('Foundry resource name.')
+@description('Foundry account name.')
 output foundryName string = foundry.name
 
-@description('Endpoint URL of the Foundry resource.')
+@description('Endpoint URL of the Foundry account.')
 output foundryEndpoint string = foundry.properties.endpoint
 
 @description('Resource ID of the Foundry Project.')
@@ -134,5 +204,11 @@ output projectId string = project.id
 @description('Name of the Foundry Project.')
 output projectName string = project.name
 
-@description('Endpoint URL of the Foundry Project.')
-output projectEndpoint string = project.properties.endpoint
+@description('Name of the AI Search connection in Foundry.')
+output searchConnectionName string = searchConnection.name
+
+@description('Name of the chat completion model deployment.')
+output chatDeploymentName string = chatDeployment.name
+
+@description('Name of the embedding model deployment.')
+output embeddingDeploymentName string = embeddingDeployment.name

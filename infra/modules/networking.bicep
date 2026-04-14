@@ -39,7 +39,6 @@ var subnets = {
 }
 
 var privateDnsZoneNames = [
-  'privatelink.openai.azure.com'
   'privatelink.search.windows.net'
   'privatelink.vaultcore.azure.net'
   'privatelink.blob.core.windows.net'
@@ -278,20 +277,17 @@ output subnetPrivateEndpointsId string = vnet.properties.subnets[1].id
 @description('Resource ID of the AI subnet.')
 output subnetAiId string = vnet.properties.subnets[2].id
 
-@description('Resource ID of the Azure OpenAI private DNS zone.')
-output dnsZoneOpenAiId string = privateDnsZones[0].id
-
 @description('Resource ID of the AI Search private DNS zone.')
-output dnsZoneSearchId string = privateDnsZones[1].id
+output dnsZoneSearchId string = privateDnsZones[0].id
 
 @description('Resource ID of the Key Vault private DNS zone.')
-output dnsZoneKeyVaultId string = privateDnsZones[2].id
+output dnsZoneKeyVaultId string = privateDnsZones[1].id
 
 @description('Resource ID of the Blob Storage private DNS zone.')
-output dnsZoneBlobId string = privateDnsZones[3].id
+output dnsZoneBlobId string = privateDnsZones[2].id
 
 @description('Resource ID of the Cognitive Services private DNS zone.')
-output dnsZoneCognitiveServicesId string = privateDnsZones[4].id
+output dnsZoneCognitiveServicesId string = privateDnsZones[3].id
 
 @description('Resource ID of the Azure Container Registry private DNS zone.')
-output dnsZoneAcrId string = privateDnsZones[5].id
+output dnsZoneAcrId string = privateDnsZones[4].id

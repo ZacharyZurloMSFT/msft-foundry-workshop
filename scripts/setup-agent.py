@@ -40,45 +40,6 @@ def get_credential():
         return DefaultAzureCredential()
 
 
-def setup_connections(project_client):
-    """Create AI Search and OpenAI connections in the Foundry project."""
-    search_endpoint = os.environ.get("AZURE_SEARCH_ENDPOINT", "")
-    openai_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
-
-    # Check existing connections
-    try:
-        existing = list(project_client.connections.list())
-        existing_names = [c.name for c in existing]
-        logger.info(f"Existing connections: {existing_names}")
-    except Exception as e:
-        logger.warning(f"Could not list connections: {e}")
-        existing_names = []
-
-    # Create AI Search connection if not exists
-    if search_endpoint and "ai-search-connection" not in existing_names:
-        try:
-            from azure.ai.projects.models import (
-                AzureAISearchConnection,
-                ConnectionProperties,
-            )
-            logger.info(f"Creating AI Search connection: {search_endpoint}")
-            project_client.connections.create_or_update(
-                name="ai-search-connection",
-                body=AzureAISearchConnection(
-                    target=search_endpoint,
-                    credentials={"type": "AAD"},
-                ),
-            )
-            logger.info("✅ AI Search connection created")
-        except ImportError:
-            logger.warning("AzureAISearchConnection not available in SDK — connection must be created via portal")
-        except Exception as e:
-            logger.warning(f"Could not create AI Search connection: {e}")
-            logger.info("→ Create it manually in the Foundry portal: Management → Connected resources → + New → Azure AI Search")
-    else:
-        logger.info("AI Search connection already exists or endpoint not set")
-
-
 def create_agent(project_client) -> str:
     """Create the RAG agent with AI Search grounding tool."""
     search_index = os.environ.get("AZURE_SEARCH_INDEX_NAME", "documents")
@@ -166,16 +127,9 @@ def main():
     credential = get_credential()
     client = AIProjectClient(endpoint=endpoint, credential=credential)
 
-    # Step 1: Setup connections
+    # Create agent (connections are created in Bicep)
     logger.info("=" * 50)
-    logger.info("Step 1: Setting up connections")
-    logger.info("=" * 50)
-    setup_connections(client)
-
-    # Step 2: Create agent
-    logger.info("")
-    logger.info("=" * 50)
-    logger.info("Step 2: Creating RAG agent")
+    logger.info("Creating RAG agent")
     logger.info("=" * 50)
     agent_id = create_agent(client)
 

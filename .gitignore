@@ -1,1 +1,14 @@
 infra/main.json
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+dist/
+
+# Environment & secrets
+.env
+.agent-config.json
