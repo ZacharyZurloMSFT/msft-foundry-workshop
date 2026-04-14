@@ -45,7 +45,7 @@ resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-
 // Built-in role GUIDs:
 //   Storage Blob Data Contributor  : ba92f5b4-2d11-453d-a403-e96b0029c9fe
 //   Key Vault Secrets User         : 4633458b-17de-408a-b874-0445c86b69e6
-//   Azure AI Developer             : 64702f94-c441-49e6-a78b-ef80e0188fee
+//   Azure AI User                  : 53ca6127-db72-4b80-b1b0-d745d6d5456d
 //   AcrPull                        : 7f951dda-4ed3-4680-a7ca-43fe172d538d
 
 // ---------- Storage Blob Data Contributor ----------
@@ -80,15 +80,15 @@ resource keyVaultResource 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: last(split(keyVaultId, '/'))
 }
 
-// ---------- Azure AI Developer on AI Foundry ----------
+// ---------- Azure AI User on AI Foundry ----------
 
-resource aiDeveloper 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(aiFoundryId, managedIdentity.id, '64702f94-c441-49e6-a78b-ef80e0188fee')
+resource aiUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(aiFoundryId, managedIdentity.id, '53ca6127-db72-4b80-b1b0-d745d6d5456d')
   scope: aiFoundryResource
   properties: {
     principalId: managedIdentity.properties.principalId
-      principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '64702f94-c441-49e6-a78b-ef80e0188fee')
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '53ca6127-db72-4b80-b1b0-d745d6d5456d')
   }
 }
 
@@ -96,14 +96,14 @@ resource aiFoundryResource 'Microsoft.CognitiveServices/accounts@2025-04-01-prev
   name: last(split(aiFoundryId, '/'))
 }
 
-// ---------- Azure AI Developer for deploying principal (CI/CD) ----------
+// ---------- Azure AI User for deploying principal (CI/CD) ----------
 
-resource aiDeveloperDeployer 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(deployingPrincipalId)) {
-  name: guid(aiFoundryId, deployingPrincipalId, '64702f94-c441-49e6-a78b-ef80e0188fee')
+resource aiUserDeployer 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(deployingPrincipalId)) {
+  name: guid(aiFoundryId, deployingPrincipalId, '53ca6127-db72-4b80-b1b0-d745d6d5456d')
   scope: aiFoundryResource
   properties: {
     principalId: deployingPrincipalId
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '64702f94-c441-49e6-a78b-ef80e0188fee')
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '53ca6127-db72-4b80-b1b0-d745d6d5456d')
   }
 }
 

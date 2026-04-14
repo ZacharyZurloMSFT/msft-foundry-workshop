@@ -123,7 +123,7 @@ jobs:
             --query "id" -o tsv)
           az role assignment create \
             --assignee "$AZURE_CLIENT_ID" \
-            --role "Azure AI Developer" \
+            --role "Azure AI User" \
             --scope "$FOUNDRY_ID" \
             --only-show-errors 2>/dev/null || true
 
