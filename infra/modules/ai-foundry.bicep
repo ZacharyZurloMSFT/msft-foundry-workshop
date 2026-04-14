@@ -7,6 +7,9 @@ param environmentName string
 @description('Azure region for all resources.')
 param location string
 
+@description('Azure region for Foundry account and project (may differ from other resources for service availability).')
+param foundryLocation string = location
+
 @description('Tags to apply to all resources.')
 param tags object = {}
 
@@ -41,7 +44,7 @@ var privateEndpointName = 'pep-foundry-${environmentName}'
 // ---------- Microsoft Foundry Account ----------
 resource foundry 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' = {
   name: foundryName
-  location: location
+  location: foundryLocation
   tags: tags
   kind: 'AIServices'
   sku: {
@@ -67,7 +70,7 @@ resource foundry 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' = {
 resource project 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-preview' = {
   name: projectName
   parent: foundry
-  location: location
+  location: foundryLocation
   tags: tags
   identity: {
     type: 'SystemAssigned'

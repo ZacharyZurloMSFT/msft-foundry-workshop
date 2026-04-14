@@ -16,6 +16,9 @@ param tags object = {
 @description('Principal ID for role assignments (e.g., the deploying user or service principal). Required because several modules (storage, keyvault, openai, aiSearch) need it before the security module is created.')
 param principalId string
 
+@description('Azure region for Foundry account and project. May differ from primary location for agent service availability.')
+param foundryLocation string = 'eastus2'
+
 // ---------- Modules ----------
 
 module networking 'modules/networking.bicep' = {
@@ -32,6 +35,7 @@ module aiFoundry 'modules/ai-foundry.bicep' = {
   params: {
     environmentName: environmentName
     location: location
+    foundryLocation: foundryLocation
     tags: tags
     subnetId: networking.outputs.subnetPrivateEndpointsId
     privateDnsZoneId: networking.outputs.dnsZoneCognitiveServicesId
