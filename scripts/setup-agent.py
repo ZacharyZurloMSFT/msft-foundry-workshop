@@ -40,7 +40,7 @@ def get_credential():
         return DefaultAzureCredential()
 
 
-def create_agent(project_client) -> str:
+def create_agent(endpoint: str, credential) -> str:
     """Create the RAG agent with AI Search grounding tool."""
     search_index = os.environ.get("AZURE_SEARCH_INDEX_NAME", "documents")
     model = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-5-mini")
@@ -48,14 +48,13 @@ def create_agent(project_client) -> str:
     logger.info(f"Creating RAG agent with model={model}, index={search_index}")
 
     try:
-        from azure.ai.projects.models import (
-            AzureAISearchTool,
-            AzureAISearchToolResource,
-            AISearchIndexResource,
-            ConnectionType,
-        )
+        from azure.ai.projects import AIProjectClient
+        from azure.ai.projects.models import ConnectionType
+        from azure.ai.agents import AgentsClient
+        from azure.ai.agents.models import AzureAISearchTool
 
-        # Get the default AI Search connection
+        # Get the default AI Search connection via project client
+        project_client = AIProjectClient(endpoint=endpoint, credential=credential)
         search_connection = project_client.connections.get_default(
             connection_type=ConnectionType.AZURE_AI_SEARCH,
             include_credentials=True,
@@ -64,18 +63,13 @@ def create_agent(project_client) -> str:
 
         # Configure search tool
         search_tool = AzureAISearchTool(
-            azure_ai_search=AzureAISearchToolResource(
-                indexes=[
-                    AISearchIndexResource(
-                        project_connection_id=search_connection.id,
-                        index_name=search_index,
-                    )
-                ]
-            )
+            index_connection_id=search_connection.id,
+            index_name=search_index,
         )
 
-        # Create the agent
-        agent = project_client.agents.create(
+        # Create the agent using AgentsClient
+        agents_client = AgentsClient(endpoint=endpoint, credential=credential)
+        agent = agents_client.create_agent(
             model=model,
             name="rag-chat-agent",
             instructions=(
@@ -83,7 +77,8 @@ def create_agent(project_client) -> str:
                 "provided documents. Always cite your sources with specific quotes "
                 "or references. If the answer is not in the documents, say so clearly."
             ),
-            tools=[search_tool],
+            tools=search_tool.definitions,
+            tool_resources=search_tool.resources,
         )
 
         logger.info(f"✅ Agent created: {agent.id}")
@@ -125,16 +120,13 @@ def main():
     logger.info(f"Foundry Project: {endpoint}")
     logger.info("")
 
-    # Initialize client
-    from azure.ai.projects import AIProjectClient
     credential = get_credential()
-    client = AIProjectClient(endpoint=endpoint, credential=credential)
 
     # Create agent (connections are created in Bicep)
     logger.info("=" * 50)
     logger.info("Creating RAG agent")
     logger.info("=" * 50)
-    agent_id = create_agent(client)
+    agent_id = create_agent(endpoint, credential)
 
     # Step 3: Save config
     logger.info("")

@@ -29,7 +29,10 @@ param projectEndpoint string
 param searchEndpoint string
 
 @description('Name of the Azure AI Search index.')
-param searchIndexName string = 'default-index'
+param searchIndexName string = 'documents'
+
+@description('Client ID of the user-assigned managed identity (for AZURE_MANAGED_IDENTITY_CLIENT_ID env var).')
+param managedIdentityClientId string
 
 @description('Name of the OpenAI chat model deployment.')
 param chatDeploymentName string
@@ -177,6 +180,10 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'AZURE_OPENAI_EMBEDDING_DEPLOYMENT'
               value: embeddingDeploymentName
+            }
+            {
+              name: 'AZURE_MANAGED_IDENTITY_CLIENT_ID'
+              value: managedIdentityClientId
             }
           ]
         }

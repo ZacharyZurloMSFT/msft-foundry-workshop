@@ -112,7 +112,17 @@ Then add these GitHub Secrets to your repo (Settings → Secrets → Actions):
 | `AZURE_TENANT_ID` | `az account show --query tenantId -o tsv` |
 | `AZURE_SUBSCRIPTION_ID` | `az account show --query id -o tsv` |
 
-> **Note:** `AZURE_CLIENT_ID` (app registration for CI/CD) is different from `principalId` (your user Object ID for resource access). They serve different purposes.
+And these GitHub Variables (Settings → Variables → Actions):
+
+| Variable | Description | Example |
+|---|---|---|
+| `AZURE_PRINCIPAL_ID` | **Object ID** of the service principal created above — grants it access to deployed resources. Get it with: `az ad sp show --id <APP_ID> --query id -o tsv` | `xxxxxxxx-...` |
+| `AZURE_ENV_NAME` | Name for the azd environment — used as a suffix in all Azure resource names | `dev` |
+| `AZURE_LOCATION` | Azure region to deploy to | `centralus` |
+
+> **Important:** `AZURE_PRINCIPAL_ID` is the service principal's **Object ID** (from `az ad sp show`), not the `appId`. These are different values. The Object ID is used to assign RBAC roles so the GitHub Actions runner can create the Foundry agent and access deployed resources.
+
+> **Note:** `AZURE_CLIENT_ID` (app registration for CI/CD) is different from `AZURE_PRINCIPAL_ID` (service principal Object ID for resource access). They serve different purposes.
 
 ## Quick Start
 

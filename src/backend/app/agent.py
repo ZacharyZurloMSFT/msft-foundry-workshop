@@ -12,6 +12,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 _agent_id: Optional[str] = None
+_agents_client = None
 _project_client = None
 
 AGENT_INSTRUCTIONS = (
@@ -21,8 +22,37 @@ AGENT_INSTRUCTIONS = (
 )
 
 
+def get_agents_client():
+    """Return a cached AgentsClient instance (azure.ai.agents)."""
+    global _agents_client
+
+    if not settings.is_configured:
+        raise HTTPException(
+            status_code=503,
+            detail="Azure AI services not configured. Set AZURE_AI_PROJECT_ENDPOINT environment variable."
+        )
+
+    if _agents_client is None:
+        from azure.ai.agents import AgentsClient
+        from azure.identity import DefaultAzureCredential, ManagedIdentityCredential
+
+        if settings.azure_managed_identity_client_id:
+            credential = ManagedIdentityCredential(
+                client_id=settings.azure_managed_identity_client_id
+            )
+        else:
+            credential = DefaultAzureCredential()
+
+        _agents_client = AgentsClient(
+            endpoint=settings.azure_ai_project_endpoint,
+            credential=credential,
+        )
+
+    return _agents_client
+
+
 def get_project_client():
-    """Return a cached AIProjectClient instance."""
+    """Return a cached AIProjectClient instance (azure.ai.projects)."""
     global _project_client
 
     if not settings.is_configured:
@@ -62,29 +92,24 @@ def create_or_get_agent() -> str:
         logger.info("Reusing existing agent: %s", _agent_id)
         return _agent_id
 
-    client = get_project_client()
+    project_client = get_project_client()
+    agents_client = get_agents_client()
 
     try:
-        from azure.ai.projects.models import (
-            AzureAISearchTool,
-            AzureAISearchToolResource,
-            ConnectionType,
-        )
+        from azure.ai.projects.models import ConnectionType
+        from azure.ai.agents.models import AzureAISearchTool
 
-        search_connection = client.connections.get_default(
+        search_connection = project_client.connections.get_default(
             connection_type=ConnectionType.AZURE_AI_SEARCH,
             include_credentials=True,
         )
 
-        search_tool = AzureAISearchTool()
-        search_tool.add_index(
-            AzureAISearchToolResource(
-                index_connection_id=search_connection.id,
-                index_name=settings.azure_search_index_name,
-            )
+        search_tool = AzureAISearchTool(
+            index_connection_id=search_connection.id,
+            index_name=settings.azure_search_index_name,
         )
 
-        agent = client.agents.create_agent(
+        agent = agents_client.create_agent(
             model=settings.agent_model,
             name="rag-chat-agent",
             instructions=AGENT_INSTRUCTIONS,

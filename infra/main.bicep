@@ -75,11 +75,13 @@ module containerApps 'modules/container-apps.bicep' = {
     acaSubnetId: networking.outputs.subnetAcaId
     logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsId
     managedIdentityId: security.outputs.managedIdentityId
+    managedIdentityClientId: security.outputs.managedIdentityClientId
     chatDeploymentName: aiFoundry.outputs.chatDeploymentName
     embeddingDeploymentName: aiFoundry.outputs.embeddingDeploymentName
     foundryEndpoint: aiFoundry.outputs.foundryEndpoint
     projectEndpoint: aiFoundry.outputs.projectEndpoint
     searchEndpoint: aiSearch.outputs.searchEndpointUrl
+    searchIndexName: 'documents'
   }
 }
 
