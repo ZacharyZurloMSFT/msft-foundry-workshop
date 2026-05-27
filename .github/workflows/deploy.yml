@@ -84,11 +84,10 @@ jobs:
           echo "⏳ Waiting 90s for RBAC propagation..."
           sleep 90
 
-          # Install SDKs (including backend package so create-index.py can import app.*)
+          # Install SDKs
           pip install azure-ai-projects azure-identity azure-search-documents 2>&1 | tail -3
-          pip install -e src/backend 2>&1 | tail -3
           
-          # Construct endpoint env vars used by both scripts
+          # Construct endpoint env vars used by setup script
           export AZURE_AI_PROJECT_ENDPOINT="https://${FOUNDRY_NAME}.services.ai.azure.com/api/projects/project-${AZURE_ENV_NAME}"
           export AZURE_SEARCH_ENDPOINT="https://search-${AZURE_ENV_NAME}.search.windows.net"
           export AZURE_SEARCH_INDEX_NAME="documents"
@@ -99,11 +98,9 @@ jobs:
             --query "properties.endpoint" -o tsv)
           
           echo "📡 Foundry: $AZURE_AI_PROJECT_ENDPOINT"
-
-          # Create/update the AI Search index (idempotent)
-          echo "🔍 Creating AI Search index..."
-          python scripts/create-index.py
-          echo "✅ Search index ready"
+          # Note: AI Search index creation is skipped here because AI Search has
+          # publicNetworkAccess=disabled (private endpoint only). The backend creates
+          # the index on first startup from inside the VNet.
           
           # Run agent setup with retries for RBAC propagation
           for attempt in 1 2 3; do

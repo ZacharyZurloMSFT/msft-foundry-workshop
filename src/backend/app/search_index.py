@@ -2,7 +2,6 @@
 
 import logging
 
-from azure.identity import DefaultAzureCredential
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (
     HnswAlgorithmConfiguration,
@@ -97,10 +96,19 @@ def _build_index() -> SearchIndex:
 
 
 def _get_index_client() -> SearchIndexClient:
-    """Create a SearchIndexClient using DefaultAzureCredential."""
+    """Create a SearchIndexClient using managed identity when available."""
+    from azure.identity import DefaultAzureCredential, ManagedIdentityCredential
+
+    if settings.azure_managed_identity_client_id:
+        credential = ManagedIdentityCredential(
+            client_id=settings.azure_managed_identity_client_id
+        )
+    else:
+        credential = DefaultAzureCredential()
+
     return SearchIndexClient(
         endpoint=settings.azure_search_endpoint,
-        credential=DefaultAzureCredential(),
+        credential=credential,
     )
 
 
