@@ -104,33 +104,25 @@ def generate_embeddings(
     chunks: list[str],
     project_client: object | None = None,
 ) -> list[list[float]]:
-    """Generate embeddings using Azure OpenAI via the project client or openai SDK."""
-    if project_client is not None:
-        return _embed_via_project_client(chunks, project_client)
-    return _embed_via_openai_sdk(chunks)
+    """Generate embeddings using Azure OpenAI with managed identity."""
+    return _embed_via_azure_openai(chunks)
 
 
-def _embed_via_project_client(
-    chunks: list[str],
-    project_client: object,
-) -> list[list[float]]:
-    """Use AIProjectClient inference to get embeddings."""
-    from azure.ai.projects import AIProjectClient
+def _embed_via_azure_openai(chunks: list[str]) -> list[list[float]]:
+    """Use AzureOpenAI SDK with managed identity (or DefaultAzureCredential locally)."""
+    from openai import AzureOpenAI
+    from azure.identity import get_bearer_token_provider
+    from app.clients import _get_credential
 
-    client: AIProjectClient = project_client  # type: ignore[assignment]
-    inference = client.inference
-    response = inference.get_embeddings(
-        model=settings.azure_openai_embedding_deployment,
-        input=chunks,
+    token_provider = get_bearer_token_provider(
+        _get_credential(), "https://cognitiveservices.azure.com/.default"
     )
-    return [item.embedding for item in response.data]
-
-
-def _embed_via_openai_sdk(chunks: list[str]) -> list[list[float]]:
-    """Fallback: use the openai SDK directly."""
-    import openai
-
-    response = openai.embeddings.create(
+    client = AzureOpenAI(
+        azure_endpoint=settings.azure_openai_endpoint,
+        azure_ad_token_provider=token_provider,
+        api_version="2024-02-01",
+    )
+    response = client.embeddings.create(
         model=settings.azure_openai_embedding_deployment,
         input=chunks,
     )

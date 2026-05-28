@@ -5,7 +5,7 @@ import os
 
 from fastapi import APIRouter, HTTPException, UploadFile, status
 
-from app.clients import get_project_client, get_search_client
+from app.clients import get_search_client
 from app.ingestion import (
     ALLOWED_EXTENSIONS,
     MAX_FILE_SIZE,
@@ -56,8 +56,7 @@ async def upload_document(file: UploadFile) -> DocumentUploadResponse:
     logger.info("Extracted %d chunks from '%s'", len(chunks), file.filename)
 
     # Embed
-    project_client = get_project_client()
-    embeddings = generate_embeddings(chunks, project_client)
+    embeddings = generate_embeddings(chunks)
 
     # Build search documents and index
     search_docs = build_search_documents(file.filename, chunks, embeddings)
