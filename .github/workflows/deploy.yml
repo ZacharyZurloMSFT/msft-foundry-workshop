@@ -118,19 +118,6 @@ jobs:
             echo "⚠️  Agent not yet ready — backend will create it on first chat request"
           fi
 
-      - name: Seed sample documents
-        run: |
-          set -e
-          RG="rg-${AZURE_ENV_NAME}"
-          BACKEND_FQDN=$(az containerapp show \
-            --name "ca-backend-${AZURE_ENV_NAME}" \
-            --resource-group "$RG" \
-            --query "properties.configuration.ingress.fqdn" -o tsv)
-          BACKEND_URL="https://${BACKEND_FQDN}"
-
-          echo "🌱 Seeding sample documents from docs/samples/ ..."
-          bash scripts/seed-documents.sh "$BACKEND_URL"
-
       - name: Print deployment URLs
         run: |
           RG="rg-${AZURE_ENV_NAME}"

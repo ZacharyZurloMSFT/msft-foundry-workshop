@@ -1,0 +1,97 @@
+Contoso IT Help Desk — Technical Troubleshooting Guide
+
+ISSUE: VPN CONNECTION PROBLEMS
+
+Symptom: Cannot connect to Contoso VPN (GlobalProtect).
+
+Solution Steps:
+1. Ensure you are connected to the internet first (try opening google.com).
+2. Open GlobalProtect client. If not installed, download from https://vpn.contoso.com.
+3. Enter gateway address: vpn.contoso.com
+4. Sign in with your Contoso email and password. MFA prompt will appear on Microsoft Authenticator.
+5. If connection fails, try these fixes:
+   a. Disconnect from any other VPN first.
+   b. Restart the GlobalProtect service: Settings > GlobalProtect > Restart Service.
+   c. Clear DNS cache: Open Command Prompt as Admin, run "ipconfig /flushdns".
+   d. Try the backup gateway: vpn-backup.contoso.com
+6. If still failing, contact IT Help Desk at helpdesk@contoso.com or ext. 5555.
+
+Note: VPN is required to access internal systems (SharePoint, JIRA, internal APIs) when working remotely. It is NOT required for email, Teams, or Office 365 apps.
+
+ISSUE: PASSWORD RESET
+
+Symptom: Account locked or password expired.
+
+Solution Steps:
+1. Go to https://passwordreset.contoso.com
+2. Enter your email address and complete the CAPTCHA.
+3. Choose verification method: text to phone, email to personal email, or Authenticator app.
+4. Create a new password. Requirements:
+   - Minimum 12 characters
+   - At least 1 uppercase letter, 1 lowercase letter, 1 number, 1 special character
+   - Cannot reuse any of the last 10 passwords
+   - Passwords expire every 90 days
+5. After resetting, wait 5 minutes for sync across all systems before logging in.
+
+If you cannot access the self-service portal, call the IT Help Desk at ext. 5555 with your employee ID for manual reset. Manual resets require manager verification during business hours.
+
+ISSUE: PRINTER SETUP
+
+Symptom: Need to add a network printer.
+
+Solution Steps (Windows):
+1. Open Settings > Printers & Scanners > Add Printer.
+2. Click "The printer I want isn't listed."
+3. Select "Find a printer in the directory" or "Add printer using TCP/IP address."
+4. Common printer addresses by floor:
+   - Floor 1 (Lobby): printer-f1.contoso.local (HP LaserJet Pro M404)
+   - Floor 2 (Engineering): printer-f2.contoso.local (HP Color LaserJet Enterprise M555)
+   - Floor 3 (Marketing): printer-f3.contoso.local (HP Color LaserJet Enterprise M555)
+   - Floor 4 (Executive): printer-f4.contoso.local (HP LaserJet Enterprise M607)
+5. Install the driver when prompted (select "HP Universal Print Driver" if unsure).
+6. Print a test page to confirm.
+
+For Mac users: System Preferences > Printers & Scanners > Add > IP tab > enter the printer address above.
+
+Secure printing: All printers support badge-release printing. Send your print job, then tap your badge at the printer to release it. Jobs are deleted after 4 hours if not released.
+
+ISSUE: SOFTWARE INSTALLATION REQUESTS
+
+Approved Self-Service Software (install from Software Center):
+- Microsoft Office 365 (latest version)
+- Visual Studio Code
+- Slack Desktop
+- Zoom Client
+- Adobe Acrobat Reader
+- 7-Zip
+- Notepad++
+- Git for Windows
+- Python 3.11+
+
+Software Requiring IT Approval (submit ticket):
+- Adobe Creative Cloud ($50/month license)
+- JetBrains IDEs (IntelliJ, PyCharm, etc.)
+- Docker Desktop (requires developer license)
+- Any software not in the approved list
+
+To request software: Submit a ticket at https://helpdesk.contoso.com/software with justification and manager approval. Turnaround time: 1-3 business days.
+
+ISSUE: TEAMS/OUTLOOK NOT SYNCING
+
+Solution Steps:
+1. Check internet connection.
+2. Sign out and sign back into the app.
+3. Clear app cache:
+   - Teams: Close Teams > Delete contents of %appdata%\Microsoft\Teams\Cache
+   - Outlook: File > Account Settings > Data Files > delete the .ost file (it will rebuild)
+4. Ensure your system clock is accurate (auto sync: Settings > Time & Language).
+5. If using a Mac, check that Keychain Access has valid Contoso credentials.
+
+CONTACT INFORMATION
+
+IT Help Desk Hours: Monday-Friday, 7 AM - 7 PM ET
+Phone: Extension 5555 (internal) or 1-800-555-HELP (external)
+Email: helpdesk@contoso.com
+Portal: https://helpdesk.contoso.com
+Emergency (system outage): Call the 24/7 NOC at ext. 9911
+Average response time: Email 4 hours, Phone 15 minutes, Portal 2 hours

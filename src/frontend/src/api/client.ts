@@ -55,3 +55,7 @@ export async function deleteDocument(filename: string): Promise<void> {
 export async function getConversations(): Promise<Conversation[]> {
   return request<Conversation[]>('/conversations');
 }
+
+export async function seedDocuments(force = false): Promise<{ total_seeded: number; seeded: string[]; skipped: string[]; errors: string[] }> {
+  return request('/documents/seed' + (force ? '?force=true' : ''), { method: 'POST' });
+}

@@ -1,0 +1,100 @@
+Contoso Industries — Q1 2026 Quarterly Business Review
+Meeting Date: April 3, 2026 | Attendees: Executive Leadership Team
+
+EXECUTIVE SUMMARY
+
+Q1 2026 was a strong quarter. Revenue reached $14.2M, up 18% year-over-year and 6% above forecast. The new CloudSuite product line exceeded expectations with $3.1M in first-quarter bookings. Customer retention rate held steady at 94%. Headcount grew to 312 employees (up from 285 in Q4 2025).
+
+FINANCIAL RESULTS
+
+Total Revenue: $14.2M (target: $13.4M) ✓
+- Software Subscriptions: $8.9M (63% of revenue)
+- Professional Services: $3.8M (27% of revenue)
+- Hardware Sales: $1.5M (10% of revenue)
+
+Gross Margin: 72% (target: 70%) ✓
+Operating Expenses: $9.8M
+EBITDA: $4.4M (31% margin)
+Net Income: $2.1M
+
+Cash Position: $18.7M (up from $16.2M in Q4)
+Burn Rate: N/A (cash flow positive since Q3 2025)
+ARR (Annual Recurring Revenue): $35.6M
+
+PRODUCT UPDATES
+
+CloudSuite Launch (January 15, 2026):
+- 47 new enterprise customers signed in Q1
+- Average deal size: $66K ARR
+- Pipeline for Q2: $8.2M (72 qualified opportunities)
+- NPS score from early adopters: 72
+
+Platform Reliability:
+- Uptime: 99.97% (target: 99.95%) ✓
+- Average API response time: 142ms (improved from 189ms in Q4)
+- Zero critical security incidents
+
+Upcoming Releases:
+- CloudSuite v1.2 (May 2026): AI-powered analytics dashboard, bulk data import
+- Mobile app v3.0 (June 2026): Offline mode, push notifications
+
+CUSTOMER METRICS
+
+Total Customers: 892 (up from 847)
+Enterprise (>$50K ARR): 124
+Mid-Market ($10K-$50K ARR): 341
+SMB (<$10K ARR): 427
+Churn Rate: 1.5% monthly (target: <2%) ✓
+NPS: 68 (up from 64 in Q4)
+
+Top 3 Churn Reasons:
+1. Budget cuts (38%)
+2. Switched to competitor (29%)
+3. No longer needed the product (22%)
+
+SALES & MARKETING
+
+New Bookings: $5.4M (target: $4.8M) ✓
+Win Rate: 34% (up from 31%)
+Average Sales Cycle: 42 days (down from 48)
+Marketing Qualified Leads: 1,247
+Sales Qualified Leads: 412
+Customer Acquisition Cost: $8,200 (target: <$10,000) ✓
+
+Top Performing Channels:
+1. Content marketing / SEO: 38% of leads
+2. Partner referrals: 24% of leads
+3. Paid digital (Google, LinkedIn): 21% of leads
+4. Events and webinars: 17% of leads
+
+KEY DECISIONS MADE
+
+1. APPROVED: Expand engineering team by 15 developers in Q2. Budget: $2.4M annually. Owner: Sarah Chen (VP Engineering). Deadline: June 30, 2026.
+
+2. APPROVED: Open a second office in Austin, TX. Budget: $800K setup + $400K/year lease. Owner: Mark Johnson (COO). Target opening: September 2026.
+
+3. DEFERRED: International expansion to UK market. Revisit in Q3 after CloudSuite v1.2 launch. Owner: Lisa Park (VP Sales).
+
+4. APPROVED: Increase marketing budget by 25% for Q2 ($1.5M → $1.875M) to capitalize on CloudSuite momentum. Owner: David Kim (VP Marketing).
+
+5. APPROVED: Implement SOC 2 Type II certification. Budget: $150K. Owner: James Wilson (CISO). Target completion: December 2026.
+
+ACTION ITEMS
+
+| # | Action | Owner | Deadline |
+|---|--------|-------|----------|
+| 1 | Finalize Austin office lease | Mark Johnson | May 15, 2026 |
+| 2 | Publish 15 engineering job postings | Sarah Chen | April 15, 2026 |
+| 3 | Launch CloudSuite v1.2 beta program | Rachel Torres | May 1, 2026 |
+| 4 | Complete SOC 2 readiness assessment | James Wilson | April 30, 2026 |
+| 5 | Present UK expansion business case | Lisa Park | July QBR |
+| 6 | Redesign company website | David Kim | June 30, 2026 |
+| 7 | Implement customer health scoring | Amy Nguyen | May 31, 2026 |
+
+RISKS AND CONCERNS
+
+1. Competitive pressure from TechNova's new AI features (released March 2026). Mitigation: Accelerate our AI roadmap in CloudSuite v1.3.
+2. Rising cloud infrastructure costs (+12% in Q1). Mitigation: FinOps initiative led by DevOps team, targeting 15% cost reduction by Q3.
+3. Key person risk in ML team (2 of 5 ML engineers have competing offers). Mitigation: Retention packages approved by HR.
+
+NEXT QBR: July 10, 2026

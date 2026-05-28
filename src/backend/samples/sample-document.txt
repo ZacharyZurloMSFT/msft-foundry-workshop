@@ -1,0 +1,142 @@
+Contoso Industries — Company Handbook & FAQ
+============================================
+
+About Contoso Industries
+------------------------
+
+Contoso Industries is a technology company founded in 2018 by Maria Chen and David Park in Austin, Texas. The company specializes in enterprise productivity tools powered by artificial intelligence. As of 2025, Contoso Industries employs 342 people across offices in Austin (headquarters), Seattle, and London.
+
+Maria Chen serves as Chief Executive Officer (CEO) and David Park serves as Chief Technology Officer (CTO).
+
+Company Mission: "To make every team more productive through intelligent automation."
+
+Products and Services
+---------------------
+
+### ContosoDoc Pro
+
+ContosoDoc Pro is our flagship document management platform. Launched in March 2020, it uses AI to automatically classify, tag, and organize enterprise documents.
+
+Key features:
+- Automatic document classification with 97.3% accuracy
+- Smart search across all document types (PDF, Word, Excel, PowerPoint)
+- Role-based access control with audit logging
+- Integration with Microsoft 365 and Google Workspace
+
+Pricing:
+- Starter Plan: $12 per user/month (up to 50 users)
+- Business Plan: $28 per user/month (up to 500 users)
+- Enterprise Plan: Custom pricing (unlimited users, dedicated support)
+
+### ContosoFlow
+
+ContosoFlow is our workflow automation platform, released in January 2022. It allows teams to build automated workflows without writing code.
+
+Key features:
+- Drag-and-drop workflow builder
+- 200+ pre-built connectors (Salesforce, SAP, ServiceNow, Jira, etc.)
+- AI-powered workflow suggestions based on usage patterns
+- Real-time monitoring dashboard
+
+Pricing:
+- Team Plan: $18 per user/month
+- Professional Plan: $45 per user/month
+- Enterprise Plan: Contact sales
+
+### ContosoInsight
+
+ContosoInsight is our analytics and reporting tool, launched in September 2023. It provides AI-generated insights from business data.
+
+Key features:
+- Natural language queries ("Show me sales by region for Q3")
+- Automated anomaly detection
+- Scheduled report generation
+- Export to PDF, Excel, and PowerPoint
+
+Pricing:
+- Basic: $25 per user/month
+- Advanced: $55 per user/month (includes predictive analytics)
+
+Technical Support
+-----------------
+
+### Support Tiers
+
+| Tier | Response Time | Availability | Contact Method |
+|------|--------------|--------------|----------------|
+| Standard | 24 hours | Mon–Fri 9am–6pm CT | Email |
+| Priority | 4 hours | Mon–Fri 7am–9pm CT | Email, Phone |
+| Premium | 1 hour | 24/7/365 | Email, Phone, Dedicated Slack |
+
+### Frequently Asked Questions
+
+**Q: How do I reset my ContosoDoc Pro password?**
+A: Go to app.contoso.com/settings → Security → Reset Password. You'll receive a confirmation email within 5 minutes. If you don't receive it, check your spam folder or contact support@contoso.com.
+
+**Q: What file formats does ContosoDoc Pro support?**
+A: ContosoDoc Pro supports PDF, DOCX, DOC, XLSX, XLS, PPTX, PPT, TXT, CSV, HTML, and Markdown files. Maximum file size is 100 MB per document, or 500 MB per batch upload.
+
+**Q: Can I integrate ContosoFlow with our on-premises systems?**
+A: Yes. ContosoFlow supports on-premises integration through the Contoso Gateway Agent, a lightweight service you install on a server within your network. The agent creates an outbound connection to ContosoFlow — no inbound firewall rules required. See docs.contoso.com/gateway for setup instructions.
+
+**Q: What is the uptime SLA?**
+A: We guarantee 99.9% uptime for Business and Enterprise plans. Our actual uptime over the past 12 months has been 99.97%. Status updates are available at status.contoso.com.
+
+**Q: Does Contoso Industries comply with SOC 2?**
+A: Yes. Contoso Industries achieved SOC 2 Type II certification in June 2023. We also comply with GDPR, CCPA, and HIPAA (for Enterprise plans with the Healthcare add-on). Audit reports are available upon request by emailing compliance@contoso.com.
+
+**Q: What AI models power ContosoDoc Pro's classification?**
+A: ContosoDoc Pro uses a fine-tuned transformer model trained on over 10 million enterprise documents. The model is updated quarterly. All processing occurs within your selected Azure region — no data is sent outside your compliance boundary.
+
+Company History & Milestones
+----------------------------
+
+- **2018 (Q1):** Contoso Industries founded by Maria Chen and David Park. Initial seed funding of $2.5 million from Horizon Ventures.
+- **2019 (Q2):** Series A funding of $15 million led by Summit Capital Partners. Team grows to 28 employees.
+- **2020 (Q1):** ContosoDoc Pro launched. Reaches 1,000 paying customers within 6 months.
+- **2021 (Q3):** Series B funding of $48 million led by Atlas Growth Fund. Opens Seattle office.
+- **2022 (Q1):** ContosoFlow launched. Named "Best New Automation Tool" by TechForward Magazine.
+- **2023 (Q1):** Opens London office for European expansion. Achieves SOC 2 Type II certification.
+- **2023 (Q3):** ContosoInsight launched. Total customer base exceeds 8,500 organizations.
+- **2024 (Q2):** Annual recurring revenue (ARR) reaches $67 million. Employee count hits 300.
+- **2025 (Q1):** Launches AI Agent framework for ContosoFlow. Partnership with Microsoft announced.
+
+Leadership Team
+---------------
+
+- **Maria Chen** — CEO & Co-founder. Previously VP of Product at DataStream Inc. MBA from Stanford University.
+- **David Park** — CTO & Co-founder. Previously Senior Engineer at Google Cloud. MS Computer Science from MIT.
+- **Sarah Johnson** — CFO. Joined in 2021. Previously CFO at CloudMetrics. CPA, MBA from Wharton.
+- **James Wilson** — VP of Engineering. Joined in 2020. Previously at Amazon Web Services for 8 years.
+- **Priya Patel** — VP of Sales. Joined in 2022. Previously Regional Sales Director at Salesforce.
+- **Tom Baker** — VP of Customer Success. Joined in 2023. Previously at Zendesk.
+
+Office Locations
+----------------
+
+### Austin, TX (Headquarters)
+100 Innovation Drive, Suite 400
+Austin, TX 78701
+Phone: (512) 555-0100
+
+### Seattle, WA
+2200 Lakeside Avenue, Floor 12
+Seattle, WA 98101
+Phone: (206) 555-0200
+
+### London, UK
+45 Canary Wharf Tower, Level 8
+London E14 5AB, United Kingdom
+Phone: +44 20 7946 0300
+
+Contact Information
+-------------------
+
+- General inquiries: info@contoso.com
+- Sales: sales@contoso.com
+- Support: support@contoso.com
+- Compliance: compliance@contoso.com
+- Careers: careers@contoso.com
+- Website: www.contoso.com
+- Status page: status.contoso.com
+- Documentation: docs.contoso.com

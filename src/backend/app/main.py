@@ -43,6 +43,28 @@ async def lifespan(app: FastAPI):
                 "Agent initialization failed at startup (will retry on first chat): %s", e
             )
     
+    # Seed sample documents if the index is empty (best-effort)
+    try:
+        from app.routers.documents import SAMPLES_DIR, _seed_file
+        from app.clients import get_search_client
+        from app.ingestion import chunk_text, generate_embeddings, build_search_documents, index_documents
+        sc = get_search_client()
+        if sc is not None and SAMPLES_DIR.exists():
+            existing = list(sc.search(search_text="*", select=["source"], top=1))
+            if not existing:
+                logger.info("Index is empty — auto-seeding sample documents...")
+                for p in sorted(SAMPLES_DIR.glob("*.txt")):
+                    try:
+                        text = p.read_text(encoding="utf-8", errors="replace")
+                        _seed_file(p.name, text, sc)
+                        logger.info("Auto-seeded '%s'", p.name)
+                    except Exception as e:
+                        logger.warning("Could not seed '%s': %s", p.name, e)
+            else:
+                logger.info("Index already has documents — skipping auto-seed")
+    except Exception as e:
+        logger.warning("Auto-seed skipped: %s", e)
+
     logger.info("Backend ready")
     yield
     logger.info("Shutting down...")

@@ -1,7 +1,9 @@
-"""Documents router — upload, list, and delete indexed documents."""
+"""Documents router — upload, list, delete, and seed indexed documents."""
 
+import io
 import logging
 import os
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, UploadFile, status
 
@@ -46,7 +48,6 @@ async def upload_document(file: UploadFile) -> DocumentUploadResponse:
         )
 
     # Extract text
-    import io
     text = extract_text(io.BytesIO(content), file.filename)
     if not text.strip():
         raise HTTPException(status_code=400, detail="No text content could be extracted from the file")
@@ -117,3 +118,63 @@ async def delete_document(filename: str) -> dict[str, str | int]:
         raise HTTPException(status_code=404, detail=f"No document found with filename '{filename}'")
 
     return {"filename": filename, "deleted_chunks": deleted, "status": "deleted"}
+
+
+SAMPLES_DIR = Path("/app/samples")
+
+
+def _seed_file(filename: str, text: str, search_client) -> int:
+    """Index a single text file; returns number of chunks indexed."""
+    chunks = chunk_text(text)
+    embeddings = generate_embeddings(chunks)
+    docs = build_search_documents(filename, chunks, embeddings)
+    index_documents(search_client, docs)
+    return len(chunks)
+
+
+@router.post("/seed", response_model=dict, status_code=status.HTTP_200_OK)
+async def seed_sample_documents(force: bool = False) -> dict:
+    """Load bundled sample documents into the index.
+
+    Set ``force=true`` to re-index even if a document already exists.
+    """
+    search_client = get_search_client()
+    if search_client is None:
+        raise HTTPException(status_code=503, detail="Search service not configured")
+
+    if not SAMPLES_DIR.exists():
+        raise HTTPException(status_code=404, detail="No bundled sample documents found in image")
+
+    # Gather names already indexed so we can skip them (unless force)
+    if not force:
+        existing_results = search_client.search(
+            search_text="*", select=["source"], top=1000
+        )
+        existing: set[str] = {r.get("source", "") for r in existing_results}
+    else:
+        existing = set()
+
+    seeded: list[str] = []
+    skipped: list[str] = []
+    errors: list[str] = []
+
+    for sample_path in sorted(SAMPLES_DIR.glob("*.txt")):
+        name = sample_path.name
+        if name in existing:
+            skipped.append(name)
+            continue
+        try:
+            text = sample_path.read_text(encoding="utf-8", errors="replace")
+            _seed_file(name, text, search_client)
+            seeded.append(name)
+            logger.info("Seeded sample document '%s'", name)
+        except Exception as exc:
+            logger.error("Failed to seed '%s': %s", name, exc)
+            errors.append(f"{name}: {exc}")
+
+    return {
+        "seeded": seeded,
+        "skipped": skipped,
+        "errors": errors,
+        "total_seeded": len(seeded),
+    }
