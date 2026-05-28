@@ -78,6 +78,7 @@ jobs:
           azd deploy --no-prompt
 
       - name: Setup Foundry Agent
+        continue-on-error: true
         run: |
           set -e
           RG="rg-${AZURE_ENV_NAME}"
@@ -99,9 +100,9 @@ jobs:
             --scope "$FOUNDRY_ID" \
             --only-show-errors 2>/dev/null || true
 
-          # Wait for RBAC propagation (can take up to 5 minutes)
-          echo "⏳ Waiting 90s for RBAC propagation..."
-          sleep 90
+          # Wait for RBAC propagation — Foundry data plane can take 3-5 min
+          echo "⏳ Waiting 3 minutes for RBAC propagation..."
+          sleep 180
 
           # Install SDKs
           pip install azure-ai-agents azure-ai-projects azure-identity azure-search-documents 2>&1 | tail -3

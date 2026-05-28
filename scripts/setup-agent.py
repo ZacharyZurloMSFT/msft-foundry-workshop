@@ -81,13 +81,8 @@ def create_agent(endpoint: str, credential) -> str:
 
     agents_client = AgentsClient(endpoint=endpoint, credential=credential)
 
-    # List existing agents and reuse if one already exists with the same name
-    for existing in agents_client.list_agents():
-        if existing.name == AGENT_NAME:
-            logger.info("Agent '%s' already exists: %s — deleting and recreating", AGENT_NAME, existing.id)
-            agents_client.delete_agent(existing.id)
-            break
-
+    # Always create a fresh agent — avoid list_agents() which requires
+    # RBAC to be fully propagated before the create call.
     agent = agents_client.create_agent(
         model=model,
         name=AGENT_NAME,
