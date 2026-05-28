@@ -3,14 +3,19 @@
 import logging
 
 from azure.ai.projects import AIProjectClient
-from azure.identity import DefaultAzureCredential
+from azure.identity import DefaultAzureCredential, ManagedIdentityCredential
 from azure.search.documents import SearchClient
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-credential = DefaultAzureCredential()
+
+def _get_credential():
+    """Return ManagedIdentityCredential when running on Azure, DefaultAzureCredential locally."""
+    if settings.azure_managed_identity_client_id:
+        return ManagedIdentityCredential(client_id=settings.azure_managed_identity_client_id)
+    return DefaultAzureCredential()
 
 
 def get_project_client() -> AIProjectClient | None:
@@ -20,7 +25,7 @@ def get_project_client() -> AIProjectClient | None:
         return None
     return AIProjectClient(
         endpoint=settings.azure_ai_project_endpoint,
-        credential=credential,
+        credential=_get_credential(),
     )
 
 
@@ -32,5 +37,5 @@ def get_search_client() -> SearchClient | None:
     return SearchClient(
         endpoint=settings.azure_search_endpoint,
         index_name=settings.azure_search_index_name,
-        credential=credential,
+        credential=_get_credential(),
     )
