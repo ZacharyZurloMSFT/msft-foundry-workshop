@@ -101,6 +101,14 @@ def create_or_get_agent() -> str:
     agents_client = get_agents_client()
 
     try:
+        # Reuse an existing agent with the same name to avoid accumulating duplicates
+        # across container restarts.  Azure AI Developer role covers list + create.
+        for existing in agents_client.list_agents():
+            if existing.name == AGENT_NAME:
+                _agent_id = existing.id
+                logger.info("Reusing existing RAG agent: %s", _agent_id)
+                return _agent_id
+
         agent = agents_client.create_agent(
             model=settings.agent_model,
             name=AGENT_NAME,

@@ -29,6 +29,20 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Could not create search index: %s", e)
     
+    # Create or find the RAG agent eagerly so it's visible in the Foundry portal
+    # and available without delay on the first chat request.
+    # Runs as the container's managed identity (Azure AI Developer role).
+    from app.config import settings
+    if settings.is_configured:
+        try:
+            from app.agent import create_or_get_agent
+            create_or_get_agent()
+            logger.info("Agent ready")
+        except Exception as e:
+            logger.warning(
+                "Agent initialization failed at startup (will retry on first chat): %s", e
+            )
+    
     logger.info("Backend ready")
     yield
     logger.info("Shutting down...")
@@ -56,8 +70,9 @@ def create_app() -> FastAPI:
     app.include_router(conversations_router)
 
     @app.get("/health", tags=["health"])
-    def health() -> dict[str, str]:
-        return {"status": "ok"}
+    def health() -> dict:
+        from app.agent import _agent_id
+        return {"status": "ok", "agent_id": _agent_id}
 
     return app
 
