@@ -84,15 +84,17 @@ jobs:
           BACKEND_APP="ca-backend-${AZURE_ENV_NAME}"
           FOUNDRY_NAME="foundry-${AZURE_ENV_NAME}"
           
-          # Ensure the CI/CD service principal has Azure AI Developer on the Foundry account.
-          # Must use AZURE_PRINCIPAL_ID (object ID), not AZURE_CLIENT_ID (app ID).
-          # "Azure AI Developer" is required for agent data-plane operations (read/write agents).
+          # Grant the GitHub Actions SP (not the deploying user) Azure AI Developer
+          # on the Foundry account so it can create agents in the setup step.
+          # AZURE_CLIENT_ID is the app ID — we need the SP's object ID for role assignment.
+          SP_OBJECT_ID=$(az ad sp show --id "$AZURE_CLIENT_ID" --query id -o tsv)
           FOUNDRY_ID=$(az cognitiveservices account show \
             --name "$FOUNDRY_NAME" \
             --resource-group "$RG" \
             --query "id" -o tsv)
           az role assignment create \
-            --assignee "$AZURE_PRINCIPAL_ID" \
+            --assignee-object-id "$SP_OBJECT_ID" \
+            --assignee-principal-type ServicePrincipal \
             --role "Azure AI Developer" \
             --scope "$FOUNDRY_ID" \
             --only-show-errors 2>/dev/null || true
