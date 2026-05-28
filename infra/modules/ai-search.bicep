@@ -32,7 +32,9 @@ param principalId string
 var searchServiceName = 'search-${environmentName}'
 
 // Azure AI Search resource
-resource searchService 'Microsoft.Search/searchServices@2024-06-01-preview' = {
+// Note: We use the stable 2023-11-01 GA API and omit `semanticSearch` to avoid
+// "Service update operations are not allowed at this time" errors on re-deployments.
+resource searchService 'Microsoft.Search/searchServices@2023-11-01' = {
   name: searchServiceName
   location: location
   tags: tags
@@ -46,14 +48,13 @@ resource searchService 'Microsoft.Search/searchServices@2024-06-01-preview' = {
     hostingMode: 'default'
     publicNetworkAccess: 'disabled'
     disableLocalAuth: true
-    semanticSearch: skuName == 'free' ? 'disabled' : 'free'
     partitionCount: 1
     replicaCount: 1
   }
 }
 
 // Private endpoint for the search service
-resource privateEndpoint 'Microsoft.Network/privateEndpoints@2024-01-01' = {
+resource privateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = {
   name: 'pe-${searchServiceName}'
   location: location
   tags: tags
