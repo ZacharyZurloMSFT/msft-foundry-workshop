@@ -80,10 +80,10 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-previ
 
 // ---------- Model Deployments (on Foundry account) ----------
 
-@description('GPT-5-mini deployment for chat completion')
+@description('GPT-4o-mini deployment for chat completion')
 resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-04-01-preview' = {
   parent: foundry
-  name: 'gpt-5-mini'
+  name: 'gpt-4o-mini'
   dependsOn: [project]
   sku: {
     name: 'GlobalStandard'
@@ -92,8 +92,8 @@ resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-0
   properties: {
     model: {
       format: 'OpenAI'
-      name: 'gpt-5-mini'
-      version: '2025-08-07'
+      name: 'gpt-4o-mini'
+      version: '2024-07-18'
     }
   }
 }
