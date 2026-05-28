@@ -146,6 +146,7 @@ module aiSearch 'modules/ai-search.bicep' = {
     subnetId: networking.outputs.subnetPrivateEndpointsId
     privateDnsZoneId: networking.outputs.dnsZoneSearchId
     principalId: principalId
+    managedIdentityPrincipalId: security.outputs.managedIdentityPrincipalId
   }
 }
 
