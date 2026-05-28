@@ -56,7 +56,14 @@ async def upload_document(file: UploadFile) -> DocumentUploadResponse:
     logger.info("Extracted %d chunks from '%s'", len(chunks), file.filename)
 
     # Embed
-    embeddings = generate_embeddings(chunks)
+    try:
+        embeddings = generate_embeddings(chunks)
+    except Exception as exc:
+        logger.error("Embedding generation failed for '%s': %s", file.filename, exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Embedding generation failed: {exc}",
+        ) from exc
 
     # Build search documents and index
     search_docs = build_search_documents(file.filename, chunks, embeddings)

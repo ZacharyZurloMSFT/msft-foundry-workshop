@@ -18,7 +18,7 @@ for doc in docs/samples/*.txt; do
   if [ "$code" = "200" ] || [ "$code" = "201" ]; then
     echo "✅ ($code)"
   else
-    echo "❌ ($code) $body"
+    echo "❌ ($code) $(echo "$body" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('detail', d))" 2>/dev/null || echo "$body")"
   fi
 done
 
