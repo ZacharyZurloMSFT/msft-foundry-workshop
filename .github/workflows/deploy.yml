@@ -84,14 +84,16 @@ jobs:
           BACKEND_APP="ca-backend-${AZURE_ENV_NAME}"
           FOUNDRY_NAME="foundry-${AZURE_ENV_NAME}"
           
-          # Ensure the CI/CD service principal has Azure AI Developer on the Foundry account
+          # Ensure the CI/CD service principal has Azure AI Developer on the Foundry account.
+          # Must use AZURE_PRINCIPAL_ID (object ID), not AZURE_CLIENT_ID (app ID).
+          # "Azure AI Developer" is required for agent data-plane operations (read/write agents).
           FOUNDRY_ID=$(az cognitiveservices account show \
             --name "$FOUNDRY_NAME" \
             --resource-group "$RG" \
             --query "id" -o tsv)
           az role assignment create \
-            --assignee "$AZURE_CLIENT_ID" \
-            --role "Azure AI User" \
+            --assignee "$AZURE_PRINCIPAL_ID" \
+            --role "Azure AI Developer" \
             --scope "$FOUNDRY_ID" \
             --only-show-errors 2>/dev/null || true
 
