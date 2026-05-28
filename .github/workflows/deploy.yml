@@ -128,6 +128,29 @@ jobs:
             echo "✅ Agent configured on backend"
           fi
 
+      - name: Seed sample documents
+        run: |
+          set -e
+          RG="rg-${AZURE_ENV_NAME}"
+          BACKEND_FQDN=$(az containerapp show \
+            --name "ca-backend-${AZURE_ENV_NAME}" \
+            --resource-group "$RG" \
+            --query "properties.configuration.ingress.fqdn" -o tsv)
+          BACKEND_URL="https://${BACKEND_FQDN}"
+
+          echo "⏳ Waiting for backend to be healthy at $BACKEND_URL ..."
+          for i in $(seq 1 24); do
+            if curl -sf "${BACKEND_URL}/health" > /dev/null 2>&1; then
+              echo "✅ Backend is healthy"
+              break
+            fi
+            echo "  Attempt $i/24 — not ready yet, waiting 15s..."
+            sleep 15
+          done
+
+          echo "🌱 Seeding sample documents from docs/samples/ ..."
+          bash scripts/seed-documents.sh "$BACKEND_URL"
+
       - name: Print deployment URLs
         run: |
           RG="rg-${AZURE_ENV_NAME}"
