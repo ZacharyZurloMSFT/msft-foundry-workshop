@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers.chat import router as chat_router
@@ -45,12 +46,15 @@ async def lifespan(app: FastAPI):
     
     # Seed sample documents if the index is empty (best-effort)
     try:
+        from azure.core.exceptions import ResourceNotFoundError as RNF
         from app.routers.documents import SAMPLES_DIR, _seed_file
         from app.clients import get_search_client
-        from app.ingestion import chunk_text, generate_embeddings, build_search_documents, index_documents
         sc = get_search_client()
         if sc is not None and SAMPLES_DIR.exists():
-            existing = list(sc.search(search_text="*", select=["source"], top=1))
+            try:
+                existing = list(sc.search(search_text="*", select=["source"], top=1))
+            except RNF:
+                existing = []  # Index not ready yet — skip auto-seed; /seed endpoint will create it on demand
             if not existing:
                 logger.info("Index is empty — auto-seeding sample documents...")
                 for p in sorted(SAMPLES_DIR.glob("*.txt")):
@@ -95,6 +99,15 @@ def create_app() -> FastAPI:
     def health() -> dict:
         from app.agent import _agent_id
         return {"status": "ok", "agent_id": _agent_id}
+
+    @app.exception_handler(Exception)
+    async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        """Catch-all so Azure SDK errors return JSON 500 (with CORS headers) instead of crashing."""
+        logger.error("Unhandled exception on %s %s: %s", request.method, request.url.path, exc)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(exc)},
+        )
 
     return app
 

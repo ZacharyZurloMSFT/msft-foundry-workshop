@@ -5,6 +5,7 @@ import logging
 import os
 from pathlib import Path
 
+from azure.core.exceptions import ResourceNotFoundError
 from fastapi import APIRouter, HTTPException, UploadFile, status
 
 from app.clients import get_search_client
@@ -88,17 +89,19 @@ async def list_documents() -> list[DocumentInfo]:
     if search_client is None:
         raise HTTPException(status_code=503, detail="Search service not configured")
 
-    results = search_client.search(
-        search_text="*",
-        select=["source", "chunk_index"],
-        top=1000,
-    )
-
-    # Aggregate by source
-    docs: dict[str, int] = {}
-    for r in results:
-        source = r.get("source", "unknown")
-        docs[source] = docs.get(source, 0) + 1
+    try:
+        results = search_client.search(
+            search_text="*",
+            select=["source", "chunk_index"],
+            top=1000,
+        )
+        docs: dict[str, int] = {}
+        for r in results:
+            source = r.get("source", "unknown")
+            docs[source] = docs.get(source, 0) + 1
+    except ResourceNotFoundError:
+        # Index doesn't exist yet — return empty list
+        return []
 
     return [
         DocumentInfo(filename=source, chunk_count=count)
@@ -147,10 +150,23 @@ async def seed_sample_documents(force: bool = False) -> dict:
 
     # Gather names already indexed so we can skip them (unless force)
     if not force:
-        existing_results = search_client.search(
-            search_text="*", select=["source"], top=1000
-        )
-        existing: set[str] = {r.get("source", "") for r in existing_results}
+        try:
+            existing_results = search_client.search(
+                search_text="*", select=["source"], top=1000
+            )
+            existing: set[str] = {r.get("source", "") for r in existing_results}
+        except ResourceNotFoundError:
+            # Index doesn't exist yet — create it first, then seed everything
+            logger.info("Index not found — creating it before seeding")
+            try:
+                from app.search_index import create_or_update_index
+                create_or_update_index()
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Could not create search index: {exc}",
+                ) from exc
+            existing = set()
     else:
         existing = set()
 
