@@ -112,8 +112,7 @@ jobs:
             az containerapp update \
               --name "$BACKEND_APP" \
               --resource-group "$RG" \
-              --set-env-vars "AGENT_ID=$AGENT_ID" \
-              --no-prompt
+              --set-env-vars "AGENT_ID=$AGENT_ID"
             echo "✅ AGENT_ID set on container app"
           else
             echo "⚠️  Agent not yet ready — backend will create it on first chat request"
