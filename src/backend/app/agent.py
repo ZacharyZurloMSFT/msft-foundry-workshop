@@ -83,22 +83,30 @@ def get_agents_client():
 def create_or_get_agent() -> str:
     """Return the ID of the RAG agent, creating it if it doesn't exist yet.
 
-    If ``AGENT_ID`` is set in the environment (by the deployment workflow
-    after running setup-agent.py), the pre-created agent is reused.
-    Otherwise, a new agent is created at runtime.
+    If ``AGENT_ID`` is set in the environment, the agent is validated via the
+    Foundry API before reuse. If it no longer exists or was created through the
+    old Assistants-compatibility endpoint, we fall through to list/create so the
+    agent is always a proper Foundry-native agent visible in the portal.
     """
     global _agent_id
 
     if _agent_id is not None:
         return _agent_id
 
-    # Prefer the agent created by the deployment script
-    if settings.agent_id:
-        _agent_id = settings.agent_id
-        logger.info("Reusing pre-created agent: %s", _agent_id)
-        return _agent_id
-
     agents_client = get_agents_client()
+
+    # Validate the persisted AGENT_ID against the Foundry API before reusing
+    if settings.agent_id:
+        try:
+            agent = agents_client.get_agent(settings.agent_id)
+            _agent_id = agent.id
+            logger.info("Reusing validated Foundry agent: %s", _agent_id)
+            return _agent_id
+        except Exception as exc:
+            logger.warning(
+                "AGENT_ID '%s' not found in Foundry project — creating a new agent. (%s)",
+                settings.agent_id, exc,
+            )
 
     try:
         # Reuse an existing agent with the same name to avoid accumulating duplicates
