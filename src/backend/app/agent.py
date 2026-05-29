@@ -8,14 +8,18 @@ The RAG agent uses a custom `search_documents` FunctionTool so that:
      results to the agent, keeping the retrieval logic fully transparent.
 
 NextGen Foundry prompt-agent pattern (Python equivalent of C# PromptAgentDefinition):
-  - Use AgentsClient (azure-ai-agents) with the project-scoped endpoint:
-      https://{foundry}.services.ai.azure.com/api/projects/{project}
-  - This endpoint is the key: it routes agent creation through the Foundry
-    project API, producing agents that appear in the portal as Type=prompt
-    with server-managed versioning — not as legacy "assistants" requiring
-    migration.
-  - A stable AGENT_NAME is used as the logical agent lineage identifier;
-    reusing agents by name avoids duplicate versions across restarts.
+  - Agent creation/lookup uses AIProjectClient.agents (azure-ai-projects).
+    This calls POST {endpoint}/agents (not /assistants), so agents appear
+    in the Foundry portal as Type=prompt with server-managed versioning.
+  - Thread/run/message operations use standalone AgentsClient (azure-ai-agents).
+    It exposes the nested sub-client API (.threads, .messages, .runs) that
+    the chat router depends on, and the /threads path is the same regardless
+    of which client created the agent.
+
+Why two clients:
+  - AgentsClient (azure-ai-agents) hits /assistants for agent CRUD → legacy portal
+  - AIProjectClient.agents (azure-ai-projects) hits /agents for agent CRUD → new portal
+  - Both hit the same /threads, /runs, /messages paths for runtime → compatible
 """
 
 from __future__ import annotations
@@ -30,7 +34,8 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 _agent_id: Optional[str] = None
-_agents_client = None  # AgentsClient — project-endpoint ensures prompt-type agents
+_project_client = None  # AIProjectClient — agent create/get via /agents endpoint
+_agents_client = None   # AgentsClient (azure-ai-agents) — threads/runs/messages
 
 AGENT_NAME = "rag-chat-agent"
 
@@ -70,13 +75,39 @@ def _get_credential():
     return DefaultAzureCredential()
 
 
-def get_agents_client():
-    """Return the cached AgentsClient.
+def _get_project_agents():
+    """Return AIProjectClient.agents for agent create/get via the /agents endpoint.
 
-    Uses the Foundry project endpoint (services.ai.azure.com/api/projects/...).
-    Agents created via this endpoint appear in the Foundry portal as Type=prompt
-    (NextGen Foundry prompt agents), not as legacy assistants — equivalent to
-    using PromptAgentDefinition in the C# SDK.
+    Agents created here appear in the Foundry portal as Type=prompt.
+    Only call create_agent() and get_agent() on the returned object —
+    avoid list_agents() as method availability varies across SDK versions.
+    """
+    global _project_client
+
+    if not settings.is_configured:
+        raise HTTPException(
+            status_code=503,
+            detail="Azure AI services not configured. Set AZURE_AI_PROJECT_ENDPOINT.",
+        )
+
+    if _project_client is None:
+        from azure.ai.projects import AIProjectClient
+
+        _project_client = AIProjectClient(
+            endpoint=settings.azure_ai_project_endpoint,
+            credential=_get_credential(),
+        )
+    return _project_client.agents
+
+
+def get_agents_client():
+    """Return the standalone AgentsClient for thread/run/message operations.
+
+    azure-ai-agents AgentsClient provides the nested sub-client API
+    (.threads, .messages, .runs) that chat.py relies on.
+    The /threads and /runs paths are the same regardless of which client
+    created the agent, so this works seamlessly with prompt agents created
+    via AIProjectClient.agents.
     """
     global _agents_client
 
@@ -98,52 +129,44 @@ def get_agents_client():
 
 
 def create_or_get_agent() -> str:
-    """Return the ID of the RAG agent, creating it if it doesn't exist yet.
+    """Return the ID of the RAG agent, creating it if needed.
 
-    Follows the NextGen Foundry PromptAgentDefinition pattern:
-    - Agents are created via AgentsClient pointed at the project-scoped endpoint
-    - A stable AGENT_NAME acts as the logical agent lineage identifier
-    - Reusing an existing agent by name avoids accumulating duplicate versions
+    Uses AIProjectClient.agents (project-scoped /agents endpoint) so the agent
+    is created as a NextGen Foundry prompt agent visible in the portal.
 
-    If ``AGENT_ID`` is set in the environment, the agent is validated via the
-    Foundry API before reuse. If it no longer exists or is a legacy assistant,
-    we fall through to list/create so the agent is always a proper Foundry
-    prompt agent visible in the portal with Type=prompt.
+    Agent lifecycle:
+      1. If AGENT_ID env var is set, validate it via get_agent() and reuse.
+      2. If not found or invalid (e.g. legacy assistant ID), create a fresh one.
+      3. The workflow persists the new AGENT_ID via az containerapp update so
+         subsequent container restarts reuse the same agent version.
     """
     global _agent_id
 
     if _agent_id is not None:
         return _agent_id
 
-    agents_client = get_agents_client()
+    project_agents = _get_project_agents()
 
-    # Validate the persisted AGENT_ID against the Foundry project API before reusing
+    # Validate the persisted AGENT_ID before reusing.
+    # get_agent() will raise if the ID doesn't exist in the /agents API,
+    # which also rejects legacy /assistants-created IDs.
     if settings.agent_id:
         try:
-            agent = agents_client.get_agent(settings.agent_id)
+            agent = project_agents.get_agent(settings.agent_id)
             _agent_id = agent.id
             logger.info("Reusing validated Foundry prompt agent: %s", _agent_id)
             return _agent_id
         except Exception as exc:
             logger.warning(
-                "AGENT_ID '%s' not found in Foundry project — creating a new agent. (%s)",
+                "AGENT_ID '%s' invalid or not a Foundry prompt agent — creating new. (%s)",
                 settings.agent_id, exc,
             )
 
+    # Create a new prompt agent. With the project-scoped endpoint this calls
+    # POST {endpoint}/agents, making it a NextGen Foundry prompt agent.
+    # Equivalent to PromptAgentDefinition + CreateAgentVersionAsync in C#.
     try:
-        # Reuse existing agent version by stable name to avoid duplicate lineages.
-        for existing in agents_client.list_agents():
-            if existing.name == AGENT_NAME:
-                _agent_id = existing.id
-                logger.info(
-                    "Reusing existing Foundry prompt agent '%s': %s",
-                    AGENT_NAME, _agent_id,
-                )
-                return _agent_id
-
-        # Create a new prompt agent under the stable logical name.
-        # With the project endpoint, this maps to PromptAgentDefinition + CreateAgentVersionAsync in C#.
-        agent = agents_client.create_agent(
+        agent = project_agents.create_agent(
             model=settings.agent_model,
             name=AGENT_NAME,
             instructions=AGENT_INSTRUCTIONS,
