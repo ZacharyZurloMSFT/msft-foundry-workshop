@@ -85,8 +85,6 @@ module containerApps 'modules/container-apps.bicep' = {
   }
 }
 
-// ---------- Outputs ----------
-
 // ──────────────────────────────────────
 // Security (Managed Identity + RBAC)
 // ──────────────────────────────────────
@@ -98,8 +96,8 @@ module security 'modules/security.bicep' = {
     tags: tags
     storageAccountId: storage.outputs.storageAccountId
     aiFoundryId: aiFoundry.outputs.foundryResourceId
+    aiSearchId: aiSearch.outputs.searchServiceId
     keyVaultId: keyvault.outputs.keyVaultId
-    deployingPrincipalId: principalId
   }
 }
 
@@ -146,7 +144,6 @@ module aiSearch 'modules/ai-search.bicep' = {
     subnetId: networking.outputs.subnetPrivateEndpointsId
     privateDnsZoneId: networking.outputs.dnsZoneSearchId
     principalId: principalId
-    managedIdentityPrincipalId: security.outputs.managedIdentityPrincipalId
   }
 }
 

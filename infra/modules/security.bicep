@@ -27,11 +27,11 @@ param keyVaultId string
 @description('Resource ID of the AI Foundry Hub.')
 param aiFoundryId string
 
+@description('Resource ID of the AI Search service. Used to grant managed identity search RBAC roles.')
+param aiSearchId string
+
 @description('Resource ID of the Container Registry. Leave empty to skip AcrPull assignment.')
 param containerRegistryId string = ''
-
-@description('Object ID of the deploying principal (e.g. GitHub Actions service principal). Leave empty to skip.')
-param deployingPrincipalId string = ''
 
 // ---------- Managed Identity ----------
 
@@ -97,6 +97,48 @@ resource aiDeveloper 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 
 resource aiFoundryResource 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' existing = {
   name: last(split(aiFoundryId, '/'))
+}
+
+// ---------- AI Search RBAC for Managed Identity ----------
+// Moved here from ai-search.bicep to break the circular dependency:
+// aiFoundry → aiSearch → security → aiFoundry.
+// security already depends on aiFoundry and aiSearch, so adding search roles here is safe.
+
+resource aiSearchService 'Microsoft.Search/searchServices@2023-11-01' existing = {
+  name: last(split(aiSearchId, '/'))
+}
+
+// Search Index Data Reader
+resource miSearchIndexDataReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(aiSearchId, managedIdentity.id, '1407120a-92aa-4202-b7e9-c0e197c71c8f')
+  scope: aiSearchService
+  properties: {
+    principalId: managedIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '1407120a-92aa-4202-b7e9-c0e197c71c8f')
+  }
+}
+
+// Search Index Data Contributor
+resource miSearchIndexDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(aiSearchId, managedIdentity.id, '8ebe5a00-799e-43f5-93ac-243d3dce84a7')
+  scope: aiSearchService
+  properties: {
+    principalId: managedIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '8ebe5a00-799e-43f5-93ac-243d3dce84a7')
+  }
+}
+
+// Search Service Contributor
+resource miSearchServiceContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(aiSearchId, managedIdentity.id, '7ca78c08-252a-4471-8644-bb5ff32d4ba0')
+  scope: aiSearchService
+  properties: {
+    principalId: managedIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7ca78c08-252a-4471-8644-bb5ff32d4ba0')
+  }
 }
 
 // ---------- AcrPull on Container Registry (conditional) ----------

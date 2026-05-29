@@ -29,9 +29,6 @@ param privateDnsZoneId string
 @description('Principal ID of the managed identity to grant RBAC roles')
 param principalId string
 
-@description('Principal ID of the application managed identity (the container app) — granted the same search roles so the backend can create indexes and index/query documents.')
-param managedIdentityPrincipalId string = ''
-
 var searchServiceName = 'search-${environmentName}'
 
 // Azure AI Search resource
@@ -123,38 +120,6 @@ resource searchServiceContributor 'Microsoft.Authorization/roleAssignments@2022-
   scope: searchService
   properties: {
     principalId: principalId
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7ca78c08-252a-4471-8644-bb5ff32d4ba0')
-  }
-}
-
-// Managed identity role assignments — grants the container app's identity access to
-// create/manage indexes (Search Service Contributor) and read/write documents.
-resource miSearchIndexDataReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(managedIdentityPrincipalId)) {
-  name: guid(searchService.id, managedIdentityPrincipalId, '1407120a-92aa-4202-b7e9-c0e197c71c8f')
-  scope: searchService
-  properties: {
-    principalId: managedIdentityPrincipalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '1407120a-92aa-4202-b7e9-c0e197c71c8f')
-  }
-}
-
-resource miSearchIndexDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(managedIdentityPrincipalId)) {
-  name: guid(searchService.id, managedIdentityPrincipalId, '8ebe5a00-799e-43f5-93ac-243d3dce84a7')
-  scope: searchService
-  properties: {
-    principalId: managedIdentityPrincipalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '8ebe5a00-799e-43f5-93ac-243d3dce84a7')
-  }
-}
-
-resource miSearchServiceContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(managedIdentityPrincipalId)) {
-  name: guid(searchService.id, managedIdentityPrincipalId, '7ca78c08-252a-4471-8644-bb5ff32d4ba0')
-  scope: searchService
-  properties: {
-    principalId: managedIdentityPrincipalId
-    principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7ca78c08-252a-4471-8644-bb5ff32d4ba0')
   }
 }
