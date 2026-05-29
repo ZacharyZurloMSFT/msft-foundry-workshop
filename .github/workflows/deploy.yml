@@ -38,7 +38,10 @@ jobs:
       - name: Install azd
         uses: Azure/setup-azd@v2
 
-      - name: Provision & Deploy
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Provision Infrastructure
         run: |
           set -e
           RG="rg-${AZURE_ENV_NAME}"
@@ -54,11 +57,11 @@ jobs:
           azd env select "$AZURE_ENV_NAME"
           azd env config set infra.parameters.principalId "$AZURE_PRINCIPAL_ID"
 
-          # Provision infrastructure
-          # Note: re-running provision on an existing private-endpoint-only AI Search
-          # service can return "Service update operations are not allowed at this time".
-          # This is a transient Azure-side restriction; we treat it as non-fatal and
-          # verify the service is actually up before continuing.
+          # Provision infrastructure.
+          # RoleAssignmentExists is non-fatal — Bicep uses deterministic GUIDs so
+          # if the same assignment already exists it is already correct.
+          # "Service update operations are not allowed at this time" is a transient
+          # Azure-side restriction on private-endpoint-only AI Search; also non-fatal.
           echo "🏗️ Provisioning infrastructure..."
           if ! azd provision --no-prompt; then
             echo "⚠️  Provision step reported errors. Checking if search service is available..."
@@ -71,9 +74,40 @@ jobs:
               exit 1
             fi
             echo "✅ Search service '${SEARCH_UP}' is up — continuing despite update error"
+
+            # Recover the ACR endpoint from Azure so azd deploy can push images.
+            # When provision partially fails, azd doesn't write environment outputs,
+            # but the ACR already exists — look it up and inject it explicitly.
+            ACR_SERVER=$(az acr list \
+              --resource-group "$RG" \
+              --query "[0].loginServer" -o tsv 2>/dev/null || echo "")
+            if [ -n "$ACR_SERVER" ]; then
+              azd env set AZURE_CONTAINER_REGISTRY_ENDPOINT "$ACR_SERVER"
+              echo "✅ Recovered AZURE_CONTAINER_REGISTRY_ENDPOINT=$ACR_SERVER"
+            fi
           fi
 
-          # Deploy application
+      - name: Pre-warm Docker layer cache (backend)
+        uses: docker/build-push-action@v6
+        with:
+          context: src/backend
+          push: false
+          load: false
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Pre-warm Docker layer cache (frontend)
+        uses: docker/build-push-action@v6
+        with:
+          context: src/frontend
+          push: false
+          load: false
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      - name: Deploy Application
+        run: |
+          set -e
           echo "🚀 Deploying application..."
           azd deploy --no-prompt
 
