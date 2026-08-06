@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -17,12 +19,65 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(name)s - %(mess
 logger = logging.getLogger(__name__)
 
 
+# Retry loop for KB + agent registration. On a fresh deploy Foundry data-plane
+# RBAC takes ~5-10 minutes to propagate, so both calls fail with PermissionDenied
+# on the first attempt. We spin these in a background thread with retry so the
+# app becomes "ready" as soon as Azure catches up, without a user having to
+# manually retry a chat.
+_kb_ready = False
+_agent_ready = False
+_last_startup_error: str = ""
+STARTUP_RETRY_SECONDS = 30
+STARTUP_MAX_MINUTES = 25
+
+
+def _background_startup_retry() -> None:
+    """Keep trying KB + agent init until success (or STARTUP_MAX_MINUTES)."""
+    global _kb_ready, _agent_ready, _last_startup_error
+
+    from app.config import settings
+    if not settings.is_configured:
+        logger.warning("Skipping background startup — Azure config missing.")
+        return
+
+    from app.knowledge_base import ensure_knowledge_base
+    from app.agent import create_or_get_agent
+
+    deadline = time.time() + STARTUP_MAX_MINUTES * 60
+    attempt = 0
+    while time.time() < deadline:
+        attempt += 1
+        try:
+            if not _kb_ready:
+                ensure_knowledge_base()
+                _kb_ready = True
+                logger.info("[startup:%d] ✔ Foundry IQ knowledge base ready", attempt)
+            if not _agent_ready:
+                create_or_get_agent()
+                _agent_ready = True
+                logger.info("[startup:%d] ✔ Agent registered — backend is fully ready", attempt)
+            _last_startup_error = ""
+            return
+        except Exception as exc:
+            _last_startup_error = str(exc)
+            logger.info(
+                "[startup:%d] Not ready yet (%s). Sleeping %ds and retrying...",
+                attempt, type(exc).__name__, STARTUP_RETRY_SECONDS,
+            )
+            time.sleep(STARTUP_RETRY_SECONDS)
+
+    logger.error(
+        "Startup retry gave up after %d minutes. Last error: %s",
+        STARTUP_MAX_MINUTES, _last_startup_error,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     logger.info("Starting up...")
-    
-    # Ensure search index exists
+
+    # Search index — cheap, no RBAC quirks. Do it inline.
     try:
         from app.search_index import create_or_update_index
         create_or_update_index()
@@ -30,36 +85,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Could not create search index: %s", e)
 
-    # Create or refresh the Foundry IQ Knowledge Base + RemoteTool project
-    # connection. The KB lives on Azure AI Search and exposes an MCP endpoint;
-    # the agent will attach it via MCPTool so it appears under Knowledge in the
-    # Foundry portal (not under Tools).
-    from app.config import settings
-    if settings.is_configured:
-        try:
-            from app.knowledge_base import ensure_knowledge_base
-            ensure_knowledge_base()
-            logger.info("Foundry IQ knowledge base ready")
-        except Exception as e:
-            logger.warning(
-                "Knowledge base registration failed (agent will still start but retrieval will not work): %s",
-                e,
-            )
-
-    # Create or find the RAG agent eagerly so it's visible in the Foundry portal
-    # and available without delay on the first chat request.
-    # Runs as the container's managed identity (Azure AI Developer role).
-    if settings.is_configured:
-        try:
-            from app.agent import create_or_get_agent
-            create_or_get_agent()
-            logger.info("Agent ready")
-        except Exception as e:
-            logger.warning(
-                "Agent initialization failed at startup (will retry on first chat): %s", e
-            )
-    
-    # Seed sample documents if the index is empty (best-effort)
+    # Auto-seed sample documents (best-effort)
     try:
         from azure.core.exceptions import ResourceNotFoundError as RNF
         from app.routers.documents import SAMPLES_DIR, _seed_file
@@ -69,7 +95,7 @@ async def lifespan(app: FastAPI):
             try:
                 existing = list(sc.search(search_text="*", select=["source"], top=1))
             except RNF:
-                existing = []  # Index not ready yet — skip auto-seed; /seed endpoint will create it on demand
+                existing = []
             if not existing:
                 logger.info("Index is empty — auto-seeding sample documents...")
                 for p in sorted(SAMPLES_DIR.glob("*.txt")):
@@ -84,7 +110,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Auto-seed skipped: %s", e)
 
-    logger.info("Backend ready")
+    # KB + agent registration in the background — they need Foundry data-plane
+    # RBAC to have propagated, which takes ~5-10 min on a fresh deploy. Running
+    # this on the request path would give the user PermissionDenied errors; the
+    # background thread keeps trying so /health flips to agent_ready as soon as
+    # Azure catches up.
+    threading.Thread(
+        target=_background_startup_retry, name="startup-retry", daemon=True
+    ).start()
+    logger.info("Backend HTTP is up; KB + agent init retrying in background.")
+
     yield
     logger.info("Shutting down...")
 
@@ -112,8 +147,34 @@ def create_app() -> FastAPI:
 
     @app.get("/health", tags=["health"])
     def health() -> dict:
-        from app.agent import _agent_id
-        return {"status": "ok", "agent_id": _agent_id}
+        """Basic liveness — the FastAPI process is up. Always 200."""
+        return {
+            "status": "ok",
+            "kb_ready": _kb_ready,
+            "agent_ready": _agent_ready,
+        }
+
+    @app.get("/ready", tags=["health"])
+    def ready() -> JSONResponse:
+        """Readiness — true only once KB + agent have been registered with Foundry.
+
+        Returns HTTP 503 while background startup is still retrying, so the
+        deploy script can poll this endpoint until Foundry RBAC has propagated.
+        """
+        if _kb_ready and _agent_ready:
+            return JSONResponse(
+                status_code=200,
+                content={"ready": True, "kb_ready": True, "agent_ready": True},
+            )
+        return JSONResponse(
+            status_code=503,
+            content={
+                "ready": False,
+                "kb_ready": _kb_ready,
+                "agent_ready": _agent_ready,
+                "last_error": _last_startup_error or None,
+            },
+        )
 
     @app.exception_handler(Exception)
     async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
