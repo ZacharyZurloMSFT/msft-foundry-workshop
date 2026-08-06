@@ -39,16 +39,16 @@ Run the one-shot orchestrator:
 .\scripts\deploy-all.ps1 -EnvironmentName dev -Location centralus
 ```
 
-This runs the following stages in order:
+This runs:
 
-1. **Infrastructure** — `az deployment group create` against `infra\main.bicep` (VNet + private endpoints, AI Foundry, AI Search, Container Apps env + ACR, Key Vault, Storage, Log Analytics, managed identity + RBAC).
-2. **Images** — `az acr build` builds and pushes the backend and frontend containers.
-3. **Container apps** — `az containerapp update` swaps the placeholder images with the ones you just pushed.
-4. **Search index** — creates the `documents` index in AI Search.
-5. **Foundry agent** — creates the RAG agent and persists its ID on the backend container app.
-6. **Sample data** — uploads `docs\samples\*.txt` so you can chat with them immediately.
+| # | Stage | What happens |
+|---|---|---|
+| 1 | `.\scripts\deploy-infra.ps1`   | Bicep infrastructure (VNet + private endpoints, AI Foundry, AI Search, Container Apps env + ACR, Key Vault, Storage, Log Analytics, managed identity + RBAC) |
+| 2 | `.\scripts\build-and-push.ps1` | `az acr build` backend + frontend images |
+| 3 | `.\scripts\update-apps.ps1`    | Swap placeholder images for the real ones |
+| 4 | *(automatic)*                  | Backend startup creates the Search index, creates the Foundry agent, and seeds the built-in sample documents |
 
-The deployment takes approximately **10–15 minutes** end-to-end.
+The deployment takes approximately **10–15 minutes** end-to-end. Foundry data-plane RBAC propagation adds ~5–10 minutes before the first chat request works.
 
 ### 4. Note the outputs
 
@@ -100,7 +100,8 @@ Open the **frontend URL** from the deploy output in your browser. You should see
 | Container app shows "Failed" after update | Image build failure | Re-run `.\scripts\build-and-push.ps1` then `.\scripts\update-apps.ps1` |
 | "OpenAI resource not available in region" | Region doesn't support Azure OpenAI | Use `eastus2`, `swedencentral`, or `westus3` |
 | Bicep deployment times out | Transient Azure-side issue | Re-run `.\scripts\deploy-infra.ps1` — it's idempotent |
-| Search index empty | `create-index.ps1` didn't run | Re-run `.\scripts\create-index.ps1` |
+| Search index empty | Backend startup hit AI Search before RBAC propagated | Restart the backend: `az containerapp revision restart --name ca-backend-<env> --resource-group rg-<env> --revision <rev>` |
+| First chat returns "PermissionDenied" | Foundry data-plane RBAC (Foundry User) not yet propagated | Wait 5–10 minutes after `deploy-all.ps1` finishes and try again. |
 
 ## ✅ Checkpoint
 

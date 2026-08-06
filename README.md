@@ -87,9 +87,10 @@ If you'd rather run stages one at a time (useful for debugging or iterating on a
 | 1 | `scripts\deploy-infra.ps1`   | `az deployment group create` against `infra\main.bicep` |
 | 2 | `scripts\build-and-push.ps1` | `az acr build` backend + frontend images into ACR |
 | 3 | `scripts\update-apps.ps1`    | `az containerapp update` to swap placeholder images |
-| 4 | `scripts\create-index.ps1`   | Creates/updates the Azure AI Search index |
-| 5 | `scripts\setup-agent.ps1`    | Creates the Foundry agent, sets `AGENT_ID` on the backend |
-| 6 | `scripts\seed-documents.ps1` | Uploads `docs\samples\*.txt` to the backend for indexing |
+| 4 | *(automatic)*                | The **backend** creates the Search index, creates the Foundry agent, and seeds the built-in sample docs on startup — using its managed identity from inside the VNet. |
+| 5 | `scripts\seed-documents.ps1` | *(optional)* Uploads additional `*.txt` documents to `/api/documents/upload` — useful for adding customer data. Pass `-SamplesDir <folder>`. |
+
+> **Why no `create-index` or `setup-agent` scripts?** Azure AI Search and the Foundry project are deployed with `publicNetworkAccess: Disabled` and only reachable from inside the VNet. The backend container app is in that VNet with its own managed identity, so it does that setup for you on startup.
 
 Re-run any stage on its own — for example, `scripts\build-and-push.ps1` followed by `scripts\update-apps.ps1` to ship a code change without touching infra.
 
@@ -99,14 +100,16 @@ Re-run any stage on its own — for example, `scripts\build-and-push.ps1` follow
 # Different environment / region
 .\scripts\deploy-all.ps1 -EnvironmentName prod -Location eastus2
 
-# Deploy without seeding sample data
-.\scripts\deploy-all.ps1 -SkipSeed
+# Deploy and also seed extra customer docs
+.\scripts\deploy-all.ps1 -UploadDocs C:\path\to\customer\docs
 
 # Pin to a specific subscription
 .\scripts\deploy-all.ps1 -SubscriptionId <guid>
 ```
 
 > **Tip:** The scripts auto-resolve your `principalId` from `az ad signed-in-user show`. Pass `-PrincipalId <guid>` to override.
+
+> **Note on Foundry RBAC propagation:** The backend managed identity is granted `Foundry User` on the Foundry account via Bicep. Foundry data-plane role propagation can take **5–10 minutes** after the initial deploy. If the first chat returns `PermissionDenied`, wait a few minutes and retry — no manual fix required.
 
 ---
 
@@ -142,11 +145,7 @@ msft-foundry-workshop/
 │   ├── deploy-infra.ps1            # Stage 1: Bicep deployment
 │   ├── build-and-push.ps1          # Stage 2: az acr build for images
 │   ├── update-apps.ps1             # Stage 3: swap placeholder images
-│   ├── create-index.ps1            # Stage 4: create/update Search index
-│   ├── setup-agent.ps1             # Stage 5: create Foundry agent
-│   ├── seed-documents.ps1          # Stage 6: upload docs/samples
-│   ├── create-index.py             # Python helper (called by create-index.ps1)
-│   └── setup-agent.py              # Python helper (called by setup-agent.ps1)
+│   └── seed-documents.ps1          # (optional) Upload extra docs to backend
 ├── src/
 │   ├── backend/                    # FastAPI + Python (see .env.example)
 │   └── frontend/                   # React + Vite + Tailwind

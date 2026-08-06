@@ -1,0 +1,15 @@
+pyproject.toml
+app/__init__.py
+app/agent.py
+app/clients.py
+app/config.py
+app/conversation_store.py
+app/ingestion.py
+app/main.py
+app/models.py
+app/search_index.py
+foundry_rag_backend.egg-info/PKG-INFO
+foundry_rag_backend.egg-info/SOURCES.txt
+foundry_rag_backend.egg-info/dependency_links.txt
+foundry_rag_backend.egg-info/requires.txt
+foundry_rag_backend.egg-info/top_level.txt

@@ -46,7 +46,7 @@ resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-
 //   Storage Blob Data Contributor  : ba92f5b4-2d11-453d-a403-e96b0029c9fe
 //   Key Vault Secrets User         : 4633458b-17de-408a-b874-0445c86b69e6
 //   Azure AI Developer             : 64702f94-c441-49e6-a78b-ef80e0188fee  (create/manage agents + AI resources)
-//   Azure AI User                  : 53ca6127-db72-4b80-b1b0-d745d6d5456d  (read/use only)
+//   Foundry User                   : a97b65f3-24c7-4388-baec-2e87135dc908  (data-plane on Foundry projects; required for Agents runtime)
 //   AcrPull                        : 7f951dda-4ed3-4680-a7ca-43fe172d538d
 
 // ---------- Storage Blob Data Contributor ----------
@@ -81,9 +81,12 @@ resource keyVaultResource 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: last(split(keyVaultId, '/'))
 }
 
-// ---------- Azure AI Developer on AI Foundry ----------
-// Azure AI Developer (64702f94) allows creating and managing agents + models.
-// Azure AI User (53ca6127) is read-only — insufficient for agent creation.
+// ---------- Azure AI Developer + Foundry User on AI Foundry ----------
+// Azure AI Developer (64702f94)     — create/manage agents + AI resources.
+// Foundry User (a97b65f3)           — data-plane access to the agents runtime
+//                                     (Microsoft.CognitiveServices/* dataActions,
+//                                      covers AIServices/agents/* used by
+//                                      POST /api/projects/{project}/threads).
 
 resource aiDeveloper 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(aiFoundryId, managedIdentity.id, '64702f94-c441-49e6-a78b-ef80e0188fee')
@@ -92,6 +95,20 @@ resource aiDeveloper 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
     principalId: managedIdentity.properties.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '64702f94-c441-49e6-a78b-ef80e0188fee')
+  }
+}
+
+// Foundry User — grants `Microsoft.CognitiveServices/*` data actions on the Foundry
+// account. Required for the Agents runtime (threads/create) which we hit via
+// azure-ai-agents. Note: Foundry RBAC data-plane propagation can take 5+ minutes
+// after the assignment is created.
+resource foundryUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(aiFoundryId, managedIdentity.id, 'a97b65f3-24c7-4388-baec-2e87135dc908')
+  scope: aiFoundryResource
+  properties: {
+    principalId: managedIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a97b65f3-24c7-4388-baec-2e87135dc908')
   }
 }
 
