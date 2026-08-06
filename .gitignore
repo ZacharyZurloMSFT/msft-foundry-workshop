@@ -15,3 +15,6 @@ dist/
 
 # Deployment state (Bicep outputs cache)
 .deploy-state/
+
+# Python build artifacts
+*.egg-info/
