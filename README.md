@@ -51,101 +51,62 @@ Build and deploy an enterprise-grade **Retrieval-Augmented Generation (RAG)** ap
 |---|---|---|
 | **Azure subscription** | — | With ability to create AI services and Owner/Contributor access |
 | **Azure CLI** (`az`) | Latest | [Install](https://docs.microsoft.com/cli/azure/install-azure-cli) |
-| **Azure Developer CLI** (`azd`) | Latest | [Install](https://aka.ms/azd-install) |
-| **Python** | 3.11+ | [Download](https://www.python.org/) |
-| **Node.js** | 20+ | [Download](https://nodejs.org/) |
-| **Docker** | Latest | For local testing and container builds |
+| **PowerShell** | 7+ (or Windows PowerShell 5.1) | Used to drive the deploy scripts |
+| **Python** | 3.11+ | For the post-deploy index + agent scripts |
 | **Git** | Latest | |
 | **VS Code** | Latest | Recommended — with Python and Azure extensions |
 
+> Docker and Node.js are **not required** — container images are built server-side by `az acr build`.
+
 ---
-
-## Setup
-
-### 1. Get Your User Principal ID
-
-The `principalId` parameter is your Azure AD user Object ID — used to grant YOU access to the deployed resources.
-
-```bash
-az ad signed-in-user show --query id -o tsv
-```
-
-Save this value — you'll need it when running `azd up`.
-
-### 2. Set Up GitHub Actions (Optional — for CI/CD)
-
-If you want automated deployments via GitHub Actions, create an app registration:
-
-```bash
-# Create app registration
-az ad app create --display-name "foundry-workshop-github"
-
-# Note the appId from the output, then create a service principal
-az ad sp create --id <APP_ID>
-
-# Grant Contributor role
-az role assignment create \
-  --assignee <APP_ID> \
-  --role "Contributor" \
-  --scope "/subscriptions/<YOUR_SUBSCRIPTION_ID>"
-
-# Grant User Access Administrator (needed for RBAC assignments)
-az role assignment create \
-  --assignee <APP_ID> \
-  --role "User Access Administrator" \
-  --scope "/subscriptions/<YOUR_SUBSCRIPTION_ID>"
-
-# Create federated credential for GitHub OIDC
-az ad app federated-credential create --id <APP_ID> --parameters '{
-  "name": "foundry-workshop-main",
-  "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:<YOUR_GITHUB_ORG>/msft-foundry-workshop:ref:refs/heads/main",
-  "audiences": ["api://AzureADTokenExchange"]
-}'
-```
-
-Then add these GitHub Secrets to your repo (Settings → Secrets → Actions):
-
-| Secret | How to get |
-|---|---|
-| `AZURE_CLIENT_ID` | The `appId` from `az ad app create` output |
-| `AZURE_TENANT_ID` | `az account show --query tenantId -o tsv` |
-| `AZURE_SUBSCRIPTION_ID` | `az account show --query id -o tsv` |
-
-And these GitHub Variables (Settings → Variables → Actions):
-
-| Variable | Description | Example |
-|---|---|---|
-| `AZURE_PRINCIPAL_ID` | **Object ID** of the service principal created above — grants it access to deployed resources. Get it with: `az ad sp show --id <APP_ID> --query id -o tsv` | `xxxxxxxx-...` |
-| `AZURE_ENV_NAME` | Name for the azd environment — used as a suffix in all Azure resource names | `dev` |
-| `AZURE_LOCATION` | Azure region to deploy to | `centralus` |
-
-> **Important:** `AZURE_PRINCIPAL_ID` is the service principal's **Object ID** (from `az ad sp show`), not the `appId`. These are different values. The Object ID is used to assign RBAC roles so the GitHub Actions runner can create the Foundry agent and access deployed resources.
-
-> **Note:** `AZURE_CLIENT_ID` (app registration for CI/CD) is different from `AZURE_PRINCIPAL_ID` (service principal Object ID for resource access). They serve different purposes.
 
 ## Quick Start
 
-```bash
+The whole stack deploys with one PowerShell command. It calls Bicep for infrastructure, then `az` CLI for everything else (image builds, container app updates, search index, Foundry agent, sample docs).
+
+```powershell
 # Clone the repo
 git clone https://github.com/zzurlo/msft-foundry-workshop.git
 cd msft-foundry-workshop
 
-# Login to Azure
+# Sign in
 az login
-azd auth login
 
-# Deploy everything
-azd up
-
-# The command will prompt for:
-# - Environment name (e.g., "dev")
-# - Azure subscription
-# - Azure region (e.g., "centralus")
-# - Principal ID (your user object ID)
+# Deploy everything (infra → images → apps → index → agent → sample docs)
+.\scripts\deploy-all.ps1 -EnvironmentName dev -Location centralus
 ```
 
-> **Tip:** Find your principal ID with `az ad signed-in-user show --query id -o tsv`
+The orchestrator runs each stage in order and prints the final frontend/backend URLs when done. Deployment outputs are cached to `.deploy-state/outputs.json` so you can re-run individual stages without redeploying infra.
+
+### Running individual stages
+
+If you'd rather run stages one at a time (useful for debugging or iterating on app code):
+
+| Stage | Script | What it does |
+|---|---|---|
+| 1 | `scripts\deploy-infra.ps1`   | `az deployment group create` against `infra\main.bicep` |
+| 2 | `scripts\build-and-push.ps1` | `az acr build` backend + frontend images into ACR |
+| 3 | `scripts\update-apps.ps1`    | `az containerapp update` to swap placeholder images |
+| 4 | `scripts\create-index.ps1`   | Creates/updates the Azure AI Search index |
+| 5 | `scripts\setup-agent.ps1`    | Creates the Foundry agent, sets `AGENT_ID` on the backend |
+| 6 | `scripts\seed-documents.ps1` | Uploads `docs\samples\*.txt` to the backend for indexing |
+
+Re-run any stage on its own — for example, `scripts\build-and-push.ps1` followed by `scripts\update-apps.ps1` to ship a code change without touching infra.
+
+### Common flags
+
+```powershell
+# Different environment / region
+.\scripts\deploy-all.ps1 -EnvironmentName prod -Location eastus2
+
+# Deploy without seeding sample data
+.\scripts\deploy-all.ps1 -SkipSeed
+
+# Pin to a specific subscription
+.\scripts\deploy-all.ps1 -SubscriptionId <guid>
+```
+
+> **Tip:** The scripts auto-resolve your `principalId` from `az ad signed-in-user show`. Pass `-PrincipalId <guid>` to override.
 
 ---
 
@@ -153,19 +114,18 @@ azd up
 
 ```
 msft-foundry-workshop/
-├── azure.yaml                      # azd project definition (services, infra path)
 ├── README.md                       # This file
 ├── docs/
 │   ├── architecture.md             # Detailed architecture explanation
-│   └── security.md                 # Security posture documentation
+│   ├── security.md                 # Security posture documentation
+│   ├── labs/                       # Workshop labs (5 modules)
+│   └── samples/                    # Sample .txt files for seeding
 ├── infra/
 │   ├── main.bicep                  # Bicep orchestrator — wires all modules together
-│   ├── main.json                   # Compiled ARM template
 │   ├── main.parameters.json        # Default parameter file
 │   ├── abbreviations.json          # Resource naming abbreviation map
 │   ├── parameters/
-│   │   ├── dev.bicepparam          # Dev environment parameters (basic SKU, cost-optimized)
-│   │   ├── dev.json                # Dev parameters (JSON format)
+│   │   ├── dev.bicepparam          # Dev environment parameters (basic SKU)
 │   │   └── prod.bicepparam         # Prod environment parameters
 │   └── modules/
 │       ├── networking.bicep        # VNet, subnets, NSGs, private DNS zones
@@ -173,61 +133,24 @@ msft-foundry-workshop/
 │       ├── keyvault.bicep          # Azure Key Vault
 │       ├── ai-foundry.bicep        # AI Foundry Hub + Project
 │       ├── ai-search.bicep         # Azure AI Search service
-│       ├── openai.bicep            # Azure OpenAI (GPT-4o-mini + embeddings)
-│       ├── container-apps.bicep    # Container Apps Environment + backend/frontend apps
+│       ├── container-apps.bicep    # Container Apps Environment + ACR + backend/frontend
 │       ├── monitoring.bicep        # Log Analytics + Application Insights
 │       └── security.bicep          # Managed identity + RBAC role assignments
+├── scripts/
+│   ├── _common.ps1                 # Shared helpers (state, logging)
+│   ├── deploy-all.ps1              # One-shot orchestrator
+│   ├── deploy-infra.ps1            # Stage 1: Bicep deployment
+│   ├── build-and-push.ps1          # Stage 2: az acr build for images
+│   ├── update-apps.ps1             # Stage 3: swap placeholder images
+│   ├── create-index.ps1            # Stage 4: create/update Search index
+│   ├── setup-agent.ps1             # Stage 5: create Foundry agent
+│   ├── seed-documents.ps1          # Stage 6: upload docs/samples
+│   ├── create-index.py             # Python helper (called by create-index.ps1)
+│   └── setup-agent.py              # Python helper (called by setup-agent.ps1)
 ├── src/
-│   ├── backend/
-│   │   ├── Dockerfile              # Backend container image
-│   │   ├── pyproject.toml          # Python project metadata
-│   │   ├── requirements.txt        # Python dependencies
-│   │   ├── .env.example            # Environment variable template
-│   │   └── app/
-│   │       ├── main.py             # FastAPI application entry point
-│   │       ├── config.py           # Pydantic settings (env vars)
-│   │       ├── agent.py            # AI Foundry Agent setup + lifecycle
-│   │       ├── clients.py          # Azure SDK client initialization
-│   │       ├── ingestion.py        # Document ingestion pipeline (PDF/DOCX → AI Search)
-│   │       ├── search_index.py     # Search index schema definition
-│   │       ├── conversation_store.py # Conversation history management
-│   │       ├── models.py           # Pydantic request/response models
-│   │       └── routers/
-│   │           ├── chat.py         # /chat endpoints (streaming + sync)
-│   │           ├── conversations.py # /conversations CRUD
-│   │           └── documents.py    # /documents upload + management
-│   └── frontend/
-│       ├── Dockerfile              # Frontend container image
-│       ├── nginx.conf              # Nginx config for serving SPA
-│       ├── package-lock.json       # Locked dependencies
-│       ├── index.html              # HTML entry point
-│       ├── vite.config.ts          # Vite bundler config
-│       ├── tailwind.config.ts      # Tailwind CSS config
-│       ├── tsconfig.json           # TypeScript config
-│       ├── .env.example            # Frontend env template
-│       └── src/
-│           ├── main.tsx            # React app entry
-│           ├── App.tsx             # Root component + routing
-│           ├── config.ts           # Runtime configuration
-│           ├── index.css           # Global styles (Tailwind)
-│           ├── api/
-│           │   └── client.ts       # API client (fetch wrapper)
-│           ├── components/
-│           │   ├── Layout.tsx      # App shell / layout
-│           │   ├── ChatInput.tsx   # Message input component
-│           │   ├── ChatMessage.tsx # Message bubble with citations
-│           │   ├── ConversationSidebar.tsx # Conversation list
-│           │   ├── DocumentList.tsx # Uploaded documents list
-│           │   └── FileUpload.tsx  # Drag-and-drop file upload
-│           ├── hooks/
-│           │   └── useChat.ts      # Chat hook (streaming support)
-│           ├── pages/
-│           │   ├── ChatPage.tsx    # Main chat interface
-│           │   └── DocumentsPage.tsx # Document management page
-│           └── types/
-│               └── index.ts        # TypeScript type definitions
-└── scripts/
-    └── create-index.py             # Utility: manually create AI Search index
+│   ├── backend/                    # FastAPI + Python (see .env.example)
+│   └── frontend/                   # React + Vite + Tailwind
+└── .deploy-state/                  # (gitignored) Cached Bicep outputs
 ```
 
 ---
@@ -344,7 +267,8 @@ Open two terminal windows or use a process manager. The frontend proxies API cal
 | `AuthorizationFailed` | Insufficient subscription permissions | You need Owner or Contributor + User Access Administrator roles |
 | Private endpoint DNS not resolving | VNet DNS not configured | Ensure private DNS zones are linked to the VNet (handled by Bicep) |
 | Frontend shows "Network Error" | Backend not running or CORS issue | Check `VITE_API_BASE_URL` matches the backend URL |
-| `azd up` hangs on container build | Docker not running | Start Docker Desktop and retry |
+| `azd up` hangs on container build | Docker not running | The new flow uses `az acr build` — no local Docker needed. If you see this, you're on an older README/script. |
+| `az acr build` fails with "resource not found" | ACR not yet created | Run `scripts\deploy-infra.ps1` first — infra must exist before pushing images. |
 | AI Search index empty after deploy | Documents not yet ingested | Upload documents via the `/documents` endpoint first |
 | `azure.identity.CredentialUnavailableError` | Not logged in locally | Run `az login` and ensure DefaultAzureCredential can pick up creds |
 
@@ -352,31 +276,14 @@ Open two terminal windows or use a process manager. The frontend proxies API cal
 
 ## Clean Up
 
-Remove all deployed Azure resources:
+Remove all deployed Azure resources by deleting the resource group:
 
-```bash
-azd down
-```
-
-This deletes the resource group and all resources within it. You'll be prompted to confirm.
-
-To also remove the local environment configuration:
-
-```bash
-azd down --purge
+```powershell
+az group delete --name rg-dev --yes --no-wait
+Remove-Item .deploy-state -Recurse -Force
 ```
 
 ---
-
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/my-change`)
-3. Commit your changes (`git commit -m 'feat: add something'`)
-4. Push to the branch (`git push origin feature/my-change`)
-5. Open a Pull Request
 
 ## License
 

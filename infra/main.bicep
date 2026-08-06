@@ -205,23 +205,23 @@ output managedIdentityPrincipalId string = security.outputs.managedIdentityPrinc
 @description('Managed Identity client ID.')
 output managedIdentityClientId string = security.outputs.managedIdentityClientId
 
-@description('ACR login server endpoint for azd deploy.')
+@description('ACR login server endpoint used by the deployment scripts.')
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = containerApps.outputs.acrLoginServer
 
 @description('Azure AI Foundry endpoint (serves as both Foundry and OpenAI endpoint).')
 output AZURE_OPENAI_ENDPOINT string = aiFoundry.outputs.foundryEndpoint
 
-@description('Azure AI Search endpoint for azd.')
+@description('Azure AI Search endpoint.')
 output AZURE_SEARCH_ENDPOINT string = aiSearch.outputs.searchEndpointUrl
 
 @description('Search index name used by the application.')
 output AZURE_SEARCH_INDEX_NAME string = 'documents'
 
-@description('AI Foundry endpoint for azd.')
+@description('AI Foundry project endpoint.')
 output AZURE_AI_PROJECT_ENDPOINT string = aiFoundry.outputs.projectEndpoint
 
-@description('Backend container app FQDN for azd.')
+@description('Backend container app FQDN.')
 output BACKEND_FQDN string = containerApps.outputs.backendFqdn
 
-@description('Frontend container app FQDN for azd.')
+@description('Frontend container app FQDN.')
 output FRONTEND_FQDN string = containerApps.outputs.frontendFqdn
