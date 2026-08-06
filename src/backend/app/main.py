@@ -29,11 +29,25 @@ async def lifespan(app: FastAPI):
         logger.info("Search index ready")
     except Exception as e:
         logger.warning("Could not create search index: %s", e)
-    
+
+    # Register the AI Search index as a Foundry Knowledge Source (Foundry IQ).
+    # Shows up under Knowledge in the Foundry portal and is what the agent uses
+    # for retrieval instead of a custom search_documents function tool.
+    from app.config import settings
+    if settings.is_configured:
+        try:
+            from app.knowledge import ensure_search_knowledge_source
+            ensure_search_knowledge_source()
+            logger.info("Foundry knowledge source ready")
+        except Exception as e:
+            logger.warning(
+                "Knowledge source registration failed (agent may still work with older config): %s",
+                e,
+            )
+
     # Create or find the RAG agent eagerly so it's visible in the Foundry portal
     # and available without delay on the first chat request.
     # Runs as the container's managed identity (Azure AI Developer role).
-    from app.config import settings
     if settings.is_configured:
         try:
             from app.agent import create_or_get_agent

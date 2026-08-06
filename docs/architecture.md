@@ -63,7 +63,7 @@ The application follows a three-tier architecture deployed entirely on Azure, wi
 - Central orchestration layer for AI services
 - The **Hub** provides shared infrastructure (connections, compute, storage)
 - The **Project** scopes the agent, model deployments, and search connections
-- The backend creates an AI Foundry Agent with Azure AI Search as a grounding tool
+- The backend creates an AI Foundry Agent grounded by a **Foundry IQ knowledge source** — an `AzureAISearchTool` bound to the workshop AI Search index (registered as an `AzureAISearchIndex` asset at project scope)
 
 ### Azure OpenAI
 
@@ -74,7 +74,7 @@ The application follows a three-tier architecture deployed entirely on Azure, wi
 
 - Stores document chunks with vector embeddings
 - Supports hybrid retrieval: vector similarity search + BM25 keyword search + semantic reranking
-- The AI Foundry Agent uses it as a grounding tool to retrieve relevant document passages
+- The AI Foundry Agent uses it as a **Foundry IQ knowledge source** — retrieval is executed by the Foundry runtime (no `search_documents` tool round-trip through the backend)
 
 ### Networking
 
@@ -97,12 +97,12 @@ The application follows a three-tier architecture deployed entirely on Azure, wi
 
 1. User types a message in the React frontend
 2. Frontend sends POST to `/chat` endpoint on the backend
-3. Backend creates (or reuses) an AI Foundry Agent with Azure AI Search configured as a tool
+3. Backend creates (or reuses) an AI Foundry Agent with the AI Search index attached as a **knowledge source** (Foundry IQ)
 4. Backend creates a thread and sends the user's message
 5. The Agent:
-   - Queries Azure AI Search to find relevant document chunks
+   - The Foundry runtime performs a `vector_semantic_hybrid` query on the AI Search index and grounds the response with the retrieved passages
    - Sends the retrieved context + user question to GPT-4o-mini
-   - Returns a grounded response with citations
+   - Returns a grounded response with citations (surfaced as message annotations)
 6. Backend streams the response back to the frontend
 
 ### Document Ingestion Flow

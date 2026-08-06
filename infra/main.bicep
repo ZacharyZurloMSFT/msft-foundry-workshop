@@ -97,6 +97,8 @@ module security 'modules/security.bicep' = {
     storageAccountId: storage.outputs.storageAccountId
     aiFoundryId: aiFoundry.outputs.foundryResourceId
     aiSearchId: aiSearch.outputs.searchServiceId
+    aiSearchPrincipalId: aiSearch.outputs.searchIdentityPrincipalId
+    foundryProjectPrincipalId: aiFoundry.outputs.projectPrincipalId
     keyVaultId: keyvault.outputs.keyVaultId
   }
 }
@@ -141,8 +143,6 @@ module aiSearch 'modules/ai-search.bicep' = {
     location: location
     tags: tags
     skuName: 'basic'
-    subnetId: networking.outputs.subnetPrivateEndpointsId
-    privateDnsZoneId: networking.outputs.dnsZoneSearchId
     principalId: principalId
   }
 }

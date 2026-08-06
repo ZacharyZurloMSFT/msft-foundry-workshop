@@ -2,7 +2,7 @@
 
 Build and deploy an enterprise-grade **Retrieval-Augmented Generation (RAG)** application using **Azure AI Foundry**, **Azure AI Search**, and **Azure Container Apps**.
 
-**What you'll build:** A chat application that answers questions from your uploaded documents — powered by GPT-4o-mini with grounded, cited responses from Azure AI Search.
+**What you'll build:** A chat application that answers questions from your uploaded documents — powered by GPT-4o-mini, grounded via **Foundry IQ** with an Azure AI Search knowledge source, and returning cited answers.
 
 ---
 
@@ -198,13 +198,14 @@ The agent's system instructions are defined in `src/backend/app/agent.py` in the
 
 ```python
 AGENT_INSTRUCTIONS = (
-    "You are a helpful assistant that answers questions based on the "
-    "provided documents. Always cite your sources. If you don't know "
-    "the answer, say so."
+    "You are a helpful assistant that answers questions grounded in the workshop "
+    "knowledge base. Use the retrieved passages to compose your answer and cite "
+    "the source document by its title or filename for every fact. If the answer "
+    "is not present in the knowledge base, say so clearly."
 )
 ```
 
-Edit this string to change the agent's behavior, tone, or domain focus.
+Edit this string to change the agent's behavior, tone, or domain focus. Do **not** tell the model to "call the search tool" — retrieval is handled automatically by the Foundry IQ knowledge source attached to the agent (see `src/backend/app/knowledge.py`).
 
 ### Changing the OpenAI Model
 

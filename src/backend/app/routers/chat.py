@@ -1,17 +1,14 @@
 """Chat router — RAG chat endpoints powered by Foundry Agent Service.
 
-Flow:
-  1. User message → thread → agent run created.
-  2. Agent decides to call `search_documents` → run pauses (requires_action).
-  3. Backend executes the real Azure AI Search query, returns formatted results.
-  4. Results submitted back → agent composes final answer.
-  5. Response streamed word-by-word to the frontend via Server-Sent Events.
+Retrieval is grounded through the Foundry IQ knowledge source attached to the
+agent (see `app/agent.py`). The runtime performs the AI Search query itself and
+attaches citations as message annotations — the backend just polls until the
+run completes and returns the assistant message + citations.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
 from typing import AsyncGenerator
@@ -20,7 +17,6 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.agent import create_or_get_agent, get_agents_client
-from app.clients import get_search_client
 from app.models import (
     ChatRequest,
     ChatResponse,
@@ -32,38 +28,6 @@ from app.models import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["chat"])
-
-
-# ---------------------------------------------------------------------------
-# Search execution — called when the agent invokes the search_documents tool
-# ---------------------------------------------------------------------------
-
-def _execute_search(query: str) -> str:
-    """Run an AI Search keyword query and return formatted results."""
-    client = get_search_client()
-    if client is None:
-        return "Search service is not available."
-
-    try:
-        results = client.search(
-            search_text=query,
-            top=5,
-            select=["content", "title", "source"],
-        )
-        chunks: list[str] = []
-        for r in results:
-            title = r.get("title") or r.get("source") or "unknown"
-            content = r.get("content", "")
-            chunks.append(f"[{title}]\n{content}")
-
-        if not chunks:
-            return "No relevant documents found for this query."
-
-        return "\n\n---\n\n".join(chunks)
-
-    except Exception as exc:
-        logger.error("AI Search query failed: %s", exc)
-        return f"Search failed: {exc}"
 
 
 # ---------------------------------------------------------------------------
@@ -80,64 +44,74 @@ def _get_text_content(message) -> str:
     return "\n".join(parts) if parts else ""
 
 
-# ---------------------------------------------------------------------------
-# Core agent run — synchronous, handles tool calls in a polling loop
-# ---------------------------------------------------------------------------
+def _extract_citations(message) -> list[Citation]:
+    """Pull URL / file citations from a message's text annotations.
 
-def _run_agent_sync(thread_id: str, message: str) -> tuple[str, str]:
-    """Run the agent to completion, handle tool calls, return (response_text, thread_id).
-
-    This function blocks until the agent run is done or fails.  It is always
-    called from an asyncio executor so it never blocks the event loop.
+    The Foundry Agents runtime emits `url_citation` and `file_citation`
+    annotations on assistant messages when a knowledge source is used.
     """
-    from azure.ai.agents.models import ToolOutput
+    citations: list[Citation] = []
+    seen: set[tuple[str, str]] = set()
 
+    for block in getattr(message, "content", []) or []:
+        text_val = getattr(block, "text", None)
+        if text_val is None:
+            continue
+        for ann in getattr(text_val, "annotations", []) or []:
+            title = ""
+            url = ""
+            excerpt = getattr(ann, "text", "") or ""
+
+            url_cit = getattr(ann, "url_citation", None)
+            file_cit = getattr(ann, "file_citation", None)
+
+            if url_cit is not None:
+                title = getattr(url_cit, "title", "") or ""
+                url = getattr(url_cit, "url", "") or ""
+            elif file_cit is not None:
+                title = getattr(file_cit, "file_name", "") or getattr(file_cit, "title", "") or ""
+                url = getattr(file_cit, "file_id", "") or ""
+
+            key = (title, url)
+            if title and key not in seen:
+                seen.add(key)
+                citations.append(Citation(title=title, url=url, content=excerpt))
+
+    return citations
+
+
+# ---------------------------------------------------------------------------
+# Core agent run — synchronous, waits for completion
+# ---------------------------------------------------------------------------
+
+def _run_agent_sync(thread_id: str, message: str) -> tuple[str, list[Citation], str]:
+    """Run the agent to completion and return (response_text, citations, thread_id).
+
+    Blocks until the run is done or fails. Always called from an executor so it
+    never blocks the event loop.
+    """
     agents_client = get_agents_client()
     agent_id = create_or_get_agent()
 
-    # Add the user message to the thread
     agents_client.messages.create(thread_id=thread_id, role="user", content=message)
 
-    # Start the run
     run = agents_client.runs.create(thread_id=thread_id, agent_id=agent_id)
     logger.info("Agent run started: %s (thread=%s)", run.id, thread_id)
 
-    # Poll until the run completes or needs a tool call
     while run.status in ("queued", "in_progress", "requires_action"):
         time.sleep(1)
         run = agents_client.runs.get(thread_id=thread_id, run_id=run.id)
-
-        if run.status == "requires_action":
-            tool_calls = run.required_action.submit_tool_outputs.tool_calls
-            outputs: list[ToolOutput] = []
-
-            for tc in tool_calls:
-                fn_name = tc.function.name
-                fn_args = json.loads(tc.function.arguments or "{}")
-                logger.info("Tool call: %s(%s)", fn_name, fn_args)
-
-                if fn_name == "search_documents":
-                    result = _execute_search(fn_args.get("query", ""))
-                else:
-                    result = f"Unknown tool: {fn_name}"
-
-                outputs.append(ToolOutput(tool_call_id=tc.id, output=result))
-
-            # Submit results and let the run continue
-            run = agents_client.runs.submit_tool_outputs(
-                thread_id=thread_id, run_id=run.id, tool_outputs=outputs
-            )
 
     if run.status != "completed":
         error = getattr(run, "last_error", run.status)
         raise Exception(f"Agent run failed: {error}")
 
-    # Retrieve the latest assistant message
+    # Grab the latest assistant message
     for msg in agents_client.messages.list(thread_id=thread_id, order="desc"):
         if msg.role == "assistant":
-            return _get_text_content(msg), thread_id
+            return _get_text_content(msg), _extract_citations(msg), thread_id
 
-    return "", thread_id
+    return "", [], thread_id
 
 
 # ---------------------------------------------------------------------------
@@ -154,9 +128,9 @@ def chat(request: ChatRequest) -> ChatResponse:
         thread = agents_client.threads.create()
         thread_id = thread.id
 
-    response_text, thread_id = _run_agent_sync(thread_id, request.message)
+    response_text, citations, thread_id = _run_agent_sync(thread_id, request.message)
 
-    return ChatResponse(response=response_text, thread_id=thread_id, citations=[])
+    return ChatResponse(response=response_text, thread_id=thread_id, citations=citations)
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +142,7 @@ async def _stream_generator(thread_id: str, message: str) -> AsyncGenerator[str,
     loop = asyncio.get_event_loop()
 
     try:
-        response_text, _ = await loop.run_in_executor(
+        response_text, citations, _ = await loop.run_in_executor(
             None, _run_agent_sync, thread_id, message
         )
     except Exception as exc:
@@ -177,7 +151,6 @@ async def _stream_generator(thread_id: str, message: str) -> AsyncGenerator[str,
         yield f"data: {error_event.model_dump_json()}\n\n"
         return
 
-    # Stream the response word by word for a natural feel
     words = response_text.split(" ")
     for i, word in enumerate(words):
         chunk = word + (" " if i < len(words) - 1 else "")
@@ -185,7 +158,7 @@ async def _stream_generator(thread_id: str, message: str) -> AsyncGenerator[str,
         yield f"data: {payload.model_dump_json()}\n\n"
         await asyncio.sleep(0.02)
 
-    final = StreamEvent(done=True, thread_id=thread_id, citations=[])
+    final = StreamEvent(done=True, thread_id=thread_id, citations=citations)
     yield f"data: {final.model_dump_json()}\n\n"
 
 

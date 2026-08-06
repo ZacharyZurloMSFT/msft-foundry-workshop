@@ -4,6 +4,8 @@ import logging
 
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (
+    AzureOpenAIVectorizer,
+    AzureOpenAIVectorizerParameters,
     HnswAlgorithmConfiguration,
     SearchableField,
     SearchField,
@@ -69,10 +71,21 @@ def _build_index() -> SearchIndex:
 
     vector_search = VectorSearch(
         algorithms=[HnswAlgorithmConfiguration(name="default-hnsw")],
+        vectorizers=[
+            AzureOpenAIVectorizer(
+                vectorizer_name="default-vectorizer",
+                parameters=AzureOpenAIVectorizerParameters(
+                    resource_url=settings.azure_openai_endpoint,
+                    deployment_name=settings.azure_openai_embedding_deployment,
+                    model_name=settings.azure_openai_embedding_deployment,
+                ),
+            )
+        ],
         profiles=[
             VectorSearchProfile(
                 name="default-vector-profile",
                 algorithm_configuration_name="default-hnsw",
+                vectorizer_name="default-vectorizer",
             )
         ],
     )

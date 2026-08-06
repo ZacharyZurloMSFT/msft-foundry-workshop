@@ -20,13 +20,14 @@ Modify the RAG agent's behavior by changing system instructions, the model, chun
 
 ### What to change
 
-Open `src/backend/app/agent.py` and find the `AGENT_INSTRUCTIONS` constant (around line 24):
+Open `src/backend/app/agent.py` and find the `AGENT_INSTRUCTIONS` constant near the top of the file:
 
 ```python
 AGENT_INSTRUCTIONS = (
-    "You are a helpful assistant that answers questions based on the "
-    "provided documents. Always cite your sources. If you don't know "
-    "the answer, say so."
+    "You are a helpful assistant that answers questions grounded in the workshop "
+    "knowledge base. Use the retrieved passages to compose your answer and cite "
+    "the source document by its title or filename for every fact. If the answer "
+    "is not present in the knowledge base, say so clearly."
 )
 ```
 
@@ -34,12 +35,15 @@ AGENT_INSTRUCTIONS = (
 
 ```python
 AGENT_INSTRUCTIONS = (
-    "You are a friendly pirate assistant that answers questions based on the "
-    "provided documents. Speak like a pirate — use 'Ahoy', 'matey', 'Arrr' "
-    "and nautical language. Always cite your sources. If you don't know "
-    "the answer, say 'Shiver me timbers, I can't find that in me scrolls!'"
+    "You are a friendly pirate assistant that answers questions grounded in the "
+    "workshop knowledge base. Speak like a pirate — use 'Ahoy', 'matey', 'Arrr' "
+    "and nautical language. Cite the document title or filename for every fact. "
+    "If the answer isn't in the knowledge base, say 'Shiver me timbers, I can't "
+    "find that in me scrolls!'"
 )
 ```
+
+> Note: retrieval is handled automatically by the Foundry IQ knowledge source. You do not need to instruct the agent to call a search tool.
 
 ### Deploy the change
 

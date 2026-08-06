@@ -20,11 +20,14 @@ param tags object = {}
 ])
 param skuName string = 'basic'
 
-@description('Resource ID of the subnet for the private endpoint')
-param subnetId string
+// subnetId and privateDnsZoneId are no longer used (private endpoint removed
+// so Foundry IQ can reach Search). Kept as optional params to avoid breaking
+// callers that still pass them.
+@description('(Unused) Legacy: subnet for a private endpoint. Ignored.')
+param subnetId string = ''
 
-@description('Resource ID of the private DNS zone for privatelink.search.windows.net')
-param privateDnsZoneId string
+@description('(Unused) Legacy: private DNS zone for privatelink.search.windows.net. Ignored.')
+param privateDnsZoneId string = ''
 
 @description('Principal ID of the managed identity to grant RBAC roles')
 param principalId string
@@ -32,8 +35,11 @@ param principalId string
 var searchServiceName = 'search-${environmentName}'
 
 // Azure AI Search resource
-// Note: We use the stable 2023-11-01 GA API and omit `semanticSearch` to avoid
-// "Service update operations are not allowed at this time" errors on re-deployments.
+// Foundry IQ (Knowledge Sources) reaches this service from the Microsoft-managed
+// Foundry runtime, which cannot cross into our VNet. So publicNetworkAccess must
+// be Enabled; AAD-only auth (disableLocalAuth) keeps it locked to identity-based
+// access. If you need true private-only search, remove the AzureAISearchTool
+// from agent.py and switch to a backend-mediated search flow.
 resource searchService 'Microsoft.Search/searchServices@2023-11-01' = {
   name: searchServiceName
   location: location
@@ -46,51 +52,15 @@ resource searchService 'Microsoft.Search/searchServices@2023-11-01' = {
   }
   properties: {
     hostingMode: 'default'
-    publicNetworkAccess: 'disabled'
+    publicNetworkAccess: 'enabled'
     disableLocalAuth: true
     partitionCount: 1
     replicaCount: 1
   }
 }
 
-// Private endpoint for the search service
-resource privateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = {
-  name: 'pe-${searchServiceName}'
-  location: location
-  tags: tags
-  properties: {
-    subnet: {
-      id: subnetId
-    }
-    privateLinkServiceConnections: [
-      {
-        name: 'pe-${searchServiceName}'
-        properties: {
-          privateLinkServiceId: searchService.id
-          groupIds: [
-            'searchService'
-          ]
-        }
-      }
-    ]
-  }
-}
-
-// Private DNS zone group
-resource privateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-01-01' = {
-  parent: privateEndpoint
-  name: 'default'
-  properties: {
-    privateDnsZoneConfigs: [
-      {
-        name: 'privatelink-search-windows-net'
-        properties: {
-          privateDnsZoneId: privateDnsZoneId
-        }
-      }
-    ]
-  }
-}
+// Private endpoint intentionally removed — Foundry IQ requires public
+// network access on the AI Search service. AAD-only auth still protects it.
 
 // RBAC Role Assignments
 
@@ -134,3 +104,6 @@ output searchServiceName string = searchService.name
 
 @description('Endpoint URL of the search service')
 output searchEndpointUrl string = 'https://${searchService.name}.search.windows.net'
+
+@description('Principal ID of the Search service system-assigned identity — needs Cognitive Services OpenAI User on the Foundry account so the integrated vectorizer can call the embedding deployment.')
+output searchIdentityPrincipalId string = searchService.identity.principalId

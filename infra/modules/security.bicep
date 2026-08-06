@@ -30,6 +30,12 @@ param aiFoundryId string
 @description('Resource ID of the AI Search service. Used to grant managed identity search RBAC roles.')
 param aiSearchId string
 
+@description('Principal ID of the AI Search system-assigned identity — needs Cognitive Services OpenAI User on the Foundry account so the integrated vectorizer can call the embedding deployment.')
+param aiSearchPrincipalId string = ''
+
+@description('Principal ID of the Foundry project system-assigned identity — needed to grant the Foundry Agents runtime access to AI Search when it uses a Knowledge Source.')
+param foundryProjectPrincipalId string = ''
+
 @description('Resource ID of the Container Registry. Leave empty to skip AcrPull assignment.')
 param containerRegistryId string = ''
 
@@ -153,6 +159,42 @@ resource miSearchServiceContributor 'Microsoft.Authorization/roleAssignments@202
   scope: aiSearchService
   properties: {
     principalId: managedIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7ca78c08-252a-4471-8644-bb5ff32d4ba0')
+  }
+}
+
+// Cognitive Services OpenAI User for the AI Search system-assigned identity.
+// Needed because the search index has an integrated Azure OpenAI vectorizer —
+// AI Search calls the text-embedding-3-small deployment at query time on behalf
+// of Foundry IQ.
+resource searchToOpenAI 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(aiSearchPrincipalId)) {
+  name: guid(aiFoundryId, aiSearchPrincipalId, '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd')
+  scope: aiFoundryResource
+  properties: {
+    principalId: aiSearchPrincipalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd')
+  }
+}
+
+// Foundry project MI → Search Index Data Reader (Foundry IQ runtime queries)
+resource foundryToSearchReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(foundryProjectPrincipalId)) {
+  name: guid(aiSearchId, foundryProjectPrincipalId, '1407120a-92aa-4202-b7e9-c0e197c71c8f')
+  scope: aiSearchService
+  properties: {
+    principalId: foundryProjectPrincipalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '1407120a-92aa-4202-b7e9-c0e197c71c8f')
+  }
+}
+
+// Foundry project MI → Search Service Contributor
+resource foundryToSearchContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(foundryProjectPrincipalId)) {
+  name: guid(aiSearchId, foundryProjectPrincipalId, '7ca78c08-252a-4471-8644-bb5ff32d4ba0')
+  scope: aiSearchService
+  properties: {
+    principalId: foundryProjectPrincipalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7ca78c08-252a-4471-8644-bb5ff32d4ba0')
   }

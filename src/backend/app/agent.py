@@ -1,29 +1,28 @@
 """Foundry Agent Service — agent setup and lifecycle management.
 
-The RAG agent uses a custom ``search_documents`` FunctionTool so that:
-  1. The agent definition is visible in Azure AI Foundry portal as a
-     NextGen "prompt" agent (not a legacy assistant).
-  2. Any model that supports function calling (including gpt-4o-mini) works.
-  3. The backend explicitly executes the AI Search query and returns the
-     results to the agent, keeping the retrieval logic fully transparent.
+The RAG agent is grounded by a **Foundry IQ knowledge source** — an
+`AzureAISearchTool` bound to the workshop's AI Search index — instead of a
+custom `search_documents` FunctionTool. Retrieval happens inside the runtime,
+so the backend does not receive `requires_action` events for search.
 
 Two-client design (azure-ai-projects 2.x + azure-ai-agents 1.x):
 
   Portal registration (azure-ai-projects AgentsOperations):
-    - AIProjectClient(allow_preview=True).agents.create_version(agent_name, definition=PromptAgentDefinition(...))
-    - Calls POST {endpoint}/agents/{name}/versions → shows as Type=prompt in Foundry portal
-    - Idempotent: checks agents.get(agent_name) before creating a new version
+    - AIProjectClient(allow_preview=True).agents.create_version(agent_name,
+        definition=PromptAgentDefinition(tools=[AzureAISearchTool(...)]))
+    - Shows in the Foundry portal as Type=prompt with a Knowledge source
+    - Idempotent: create_version bumps the version if the tool changes
     - Non-fatal: portal registration failure never breaks chat
 
-  Runtime (azure-ai-agents AgentsClient mixin methods + sub-clients):
-    - agents_client.create_agent(model, name, instructions, tools) → asst_xxx ID via /assistants
-    - agents_client.get_agent(id) → validates the persisted AGENT_ID
-    - agents_client.threads.*, .runs.*, .messages.* → used by chat.py
+  Runtime (azure-ai-agents AgentsClient):
+    - agents_client.create_agent(model, name, instructions,
+        tools=tool.definitions, tool_resources=tool.resources)
+    - .threads / .runs / .messages used by chat.py
 
-Why two clients:
-  - AgentsClient(/assistants) provides the threads/runs nested sub-client API chat.py needs
-  - AIProjectClient(/agents/{name}/versions) makes the agent appear in the NextGen Foundry portal
-  - Both use the same project endpoint and managed-identity credential
+Stale-tool refresh:
+  If AGENT_ID points at an agent still using the legacy `function`-typed
+  `search_documents` tool, `_needs_refresh()` detects that and recreates the
+  runtime agent with the new `azure_ai_search` tool.
 """
 
 from __future__ import annotations
@@ -34,6 +33,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from app.config import settings
+from app.knowledge import ensure_search_knowledge_source
 
 logger = logging.getLogger(__name__)
 
@@ -44,31 +44,11 @@ _agents_client = None   # AgentsClient (azure-ai-agents) — runtime threads/run
 AGENT_NAME = "rag-chat-agent"
 
 AGENT_INSTRUCTIONS = (
-    "You are a helpful assistant that answers questions based on the knowledge base. "
-    "ALWAYS call the search_documents tool before answering to find relevant content. "
-    "Cite your sources by mentioning the document title or filename. "
-    "If the answer is not found in the search results, say so clearly."
+    "You are a helpful assistant that answers questions grounded in the workshop "
+    "knowledge base. Use the retrieved passages to compose your answer and cite "
+    "the source document by its title or filename for every fact. If the answer "
+    "is not present in the knowledge base, say so clearly."
 )
-
-# Function tool schema — the backend executes the actual AI Search query
-SEARCH_FUNCTION_SCHEMA = {
-    "name": "search_documents",
-    "description": (
-        "Search the knowledge base for relevant information. "
-        "Call this tool with a natural language search query to retrieve content "
-        "from the indexed documents before composing your answer."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "query": {
-                "type": "string",
-                "description": "A natural language search query to find relevant documents.",
-            }
-        },
-        "required": ["query"],
-    },
-}
 
 
 def _get_credential():
@@ -80,11 +60,6 @@ def _get_credential():
 
 
 def _get_project_client():
-    """Return AIProjectClient (allow_preview=True) for portal registration.
-
-    allow_preview=True enables the Foundry-Features header required for
-    PromptAgentDefinition to be accepted by the /agents API.
-    """
     global _project_client
 
     if not settings.is_configured:
@@ -105,12 +80,7 @@ def _get_project_client():
 
 
 def get_agents_client():
-    """Return the standalone AgentsClient for thread/run/message operations.
-
-    azure-ai-agents AgentsClient provides:
-    - Top-level mixin: create_agent(), get_agent() via /assistants path
-    - Nested sub-clients: .threads, .messages, .runs used by chat.py
-    """
+    """Return the standalone AgentsClient for thread/run/message operations."""
     global _agents_client
 
     if not settings.is_configured:
@@ -130,52 +100,71 @@ def get_agents_client():
     return _agents_client
 
 
-def _ensure_portal_agent() -> None:
-    """Register the RAG agent in the Foundry portal as Type=prompt.
+def _build_runtime_search_tool():
+    """Build the AgentsClient-flavoured AzureAISearchTool bound to the workshop index."""
+    from azure.ai.agents.models import AzureAISearchTool, AzureAISearchQueryType
 
-    Uses the azure-ai-projects 2.x API:
-      - agents.get(agent_name)          → check if already registered
-      - agents.create_version(name, ...) → register with PromptAgentDefinition
+    refs = ensure_search_knowledge_source()
+    return AzureAISearchTool(
+        index_connection_id=refs.project_connection_id,
+        index_name=refs.index_name,
+        query_type=AzureAISearchQueryType.VECTOR_SEMANTIC_HYBRID,
+        top_k=5,
+        index_asset_id=refs.index_asset_id or "",
+    )
 
-    This is non-fatal: portal registration failure never breaks chat functionality.
-    Idempotent: skips create_version if the portal agent already exists.
-    """
+
+def _needs_refresh(agent) -> bool:
+    """True if the persisted agent is still on the legacy function tool."""
+    try:
+        for tool in getattr(agent, "tools", []) or []:
+            t_type = getattr(tool, "type", None) or (isinstance(tool, dict) and tool.get("type"))
+            if t_type == "azure_ai_search":
+                return False
+        return True
+    except Exception:
+        return True
+
+
+def _ensure_portal_agent(search_tool) -> None:
+    """Register/update the RAG agent in the Foundry portal (Type=prompt)."""
     try:
         project_client = _get_project_client()
         project_agents = project_client.agents
 
-        # Check whether the portal agent already exists under this name.
-        try:
-            existing = project_agents.get(AGENT_NAME)
-            logger.info(
-                "Portal agent '%s' already registered in Foundry (latest version: %s)",
-                AGENT_NAME, getattr(existing, "latest_version", "unknown"),
+        from azure.ai.projects.models import (
+            AISearchIndexResource,
+            AzureAISearchQueryType,
+            AzureAISearchTool as ProjectAISearchTool,
+            AzureAISearchToolResource,
+            PromptAgentDefinition,
+        )
+
+        refs = ensure_search_knowledge_source()
+        portal_tool = ProjectAISearchTool(
+            azure_ai_search=AzureAISearchToolResource(
+                indexes=[
+                    AISearchIndexResource(
+                        project_connection_id=refs.project_connection_id,
+                        index_name=refs.index_name,
+                        query_type=AzureAISearchQueryType.VECTOR_SEMANTIC_HYBRID,
+                        top_k=5,
+                        index_asset_id=refs.index_asset_id or "",
+                    )
+                ]
             )
-            return
-        except Exception:
-            pass  # 404 or other error → agent not yet registered
-
-        # Build the PromptAgentDefinition (equivalent to C# PromptAgentDefinition)
-        from azure.ai.projects.models import FunctionTool, PromptAgentDefinition
-
-        function_tool = FunctionTool(
-            name=SEARCH_FUNCTION_SCHEMA["name"],
-            description=SEARCH_FUNCTION_SCHEMA["description"],
-            parameters=SEARCH_FUNCTION_SCHEMA["parameters"],
-            strict=False,
         )
 
         definition = PromptAgentDefinition(
             model=settings.agent_model,
             instructions=AGENT_INSTRUCTIONS,
-            tools=[function_tool],
+            tools=[portal_tool],
         )
 
-        # Create a new agent version — equivalent to CreateAgentVersionAsync in C#
         agent_version = project_agents.create_version(
             AGENT_NAME,
             definition=definition,
-            description="RAG chat agent for the Foundry workshop",
+            description="RAG chat agent — grounded via Foundry IQ + AI Search knowledge source",
         )
         logger.info(
             "Registered Foundry portal agent '%s' version %s (id=%s)",
@@ -190,32 +179,51 @@ def _ensure_portal_agent() -> None:
         )
 
 
+def _create_runtime_agent(search_tool):
+    """Create a fresh runtime agent bound to the knowledge source."""
+    agents_client = get_agents_client()
+    agent = agents_client.create_agent(
+        model=settings.agent_model,
+        name=AGENT_NAME,
+        instructions=AGENT_INSTRUCTIONS,
+        tools=search_tool.definitions,
+        tool_resources=search_tool.resources,
+    )
+    logger.info(
+        "Created runtime agent '%s': %s (model=%s, knowledge=AI Search)",
+        AGENT_NAME, agent.id, settings.agent_model,
+    )
+    return agent
+
+
 def create_or_get_agent() -> str:
-    """Return the ID of the RAG runtime agent, creating it if needed.
-
-    Runtime agent lifecycle (uses AgentsClient / /assistants path):
-      1. If AGENT_ID env var is set, validate via get_agent() and reuse.
-      2. If not found or invalid, create a fresh runtime agent.
-      3. Portal registration via _ensure_portal_agent() runs after the runtime
-         agent is ready — this is what makes the agent visible in the Foundry portal.
-
-    The AGENT_ID persisted by the workflow is always the runtime agent ID (asst_xxx)
-    since that is what chat.py passes to threads.runs.create(assistant_id=...).
-    """
+    """Return the ID of the RAG runtime agent, creating (or refreshing) it as needed."""
     global _agent_id
 
     if _agent_id is not None:
         return _agent_id
 
     agents_client = get_agents_client()
+    search_tool = _build_runtime_search_tool()
 
     # Validate the persisted AGENT_ID before reusing.
     if settings.agent_id:
         try:
             agent = agents_client.get_agent(settings.agent_id)
+            if _needs_refresh(agent):
+                logger.info(
+                    "Runtime agent %s uses a legacy tool — deleting and recreating "
+                    "with the AI Search knowledge source.", settings.agent_id,
+                )
+                try:
+                    agents_client.delete_agent(settings.agent_id)
+                except Exception as exc:
+                    logger.warning("Delete of stale agent failed (continuing): %s", exc)
+                agent = _create_runtime_agent(search_tool)
+            else:
+                logger.info("Reusing runtime agent: %s", agent.id)
             _agent_id = agent.id
-            logger.info("Reusing validated runtime agent: %s", _agent_id)
-            _ensure_portal_agent()
+            _ensure_portal_agent(search_tool)
             return _agent_id
         except Exception as exc:
             logger.warning(
@@ -223,20 +231,9 @@ def create_or_get_agent() -> str:
                 settings.agent_id, exc,
             )
 
-    # Create a new runtime agent via AgentsClient (calls /assistants).
-    # This provides the asst_xxx ID that threads/runs/messages use.
     try:
-        agent = agents_client.create_agent(
-            model=settings.agent_model,
-            name=AGENT_NAME,
-            instructions=AGENT_INSTRUCTIONS,
-            tools=[{"type": "function", "function": SEARCH_FUNCTION_SCHEMA}],
-        )
+        agent = _create_runtime_agent(search_tool)
         _agent_id = agent.id
-        logger.info(
-            "Created runtime agent '%s': %s (model=%s)",
-            AGENT_NAME, _agent_id, settings.agent_model,
-        )
     except Exception as exc:
         logger.error("Failed to create runtime agent: %s", exc)
         raise HTTPException(
@@ -244,7 +241,5 @@ def create_or_get_agent() -> str:
             detail=f"Failed to initialize AI agent: {exc}",
         ) from exc
 
-    # Register in Foundry portal as Type=prompt (non-fatal if fails).
-    _ensure_portal_agent()
-
+    _ensure_portal_agent(search_tool)
     return _agent_id

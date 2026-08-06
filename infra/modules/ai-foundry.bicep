@@ -212,6 +212,9 @@ output projectId string = project.id
 @description('Name of the Foundry Project.')
 output projectName string = project.name
 
+@description('Principal ID of the Foundry project system-assigned identity — used to grant the Foundry Agents runtime access to AI Search / Storage / etc.')
+output projectPrincipalId string = project.identity.principalId
+
 @description('Name of the AI Search connection in Foundry.')
 output searchConnectionName string = searchConnection.name
 
