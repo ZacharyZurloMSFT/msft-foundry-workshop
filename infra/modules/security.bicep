@@ -118,6 +118,18 @@ resource foundryUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   }
 }
 
+// Foundry Project Manager — required to create project connections (RemoteTool
+// connection for the Foundry IQ Knowledge Base MCP endpoint).
+resource foundryProjectManager 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(aiFoundryId, managedIdentity.id, 'eadc314b-1a2d-4efa-be10-5d325db5065e')
+  scope: aiFoundryResource
+  properties: {
+    principalId: managedIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'eadc314b-1a2d-4efa-be10-5d325db5065e')
+  }
+}
+
 resource aiFoundryResource 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' existing = {
   name: last(split(aiFoundryId, '/'))
 }

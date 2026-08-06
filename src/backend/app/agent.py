@@ -1,28 +1,12 @@
-"""Foundry Agent Service — agent setup and lifecycle management.
+"""Foundry Agent Service — versioned agent lifecycle.
 
-The RAG agent is grounded by a **Foundry IQ knowledge source** — an
-`AzureAISearchTool` bound to the workshop's AI Search index — instead of a
-custom `search_documents` FunctionTool. Retrieval happens inside the runtime,
-so the backend does not receive `requires_action` events for search.
+The New Foundry uses **versioned agents** created via
+`AIProjectClient.agents.create_version(...)` with a `PromptAgentDefinition`,
+and invoked via the **Responses API** using an `agent_reference` (see chat.py).
 
-Two-client design (azure-ai-projects 2.x + azure-ai-agents 1.x):
-
-  Portal registration (azure-ai-projects AgentsOperations):
-    - AIProjectClient(allow_preview=True).agents.create_version(agent_name,
-        definition=PromptAgentDefinition(tools=[AzureAISearchTool(...)]))
-    - Shows in the Foundry portal as Type=prompt with a Knowledge source
-    - Idempotent: create_version bumps the version if the tool changes
-    - Non-fatal: portal registration failure never breaks chat
-
-  Runtime (azure-ai-agents AgentsClient):
-    - agents_client.create_agent(model, name, instructions,
-        tools=tool.definitions, tool_resources=tool.resources)
-    - .threads / .runs / .messages used by chat.py
-
-Stale-tool refresh:
-  If AGENT_ID points at an agent still using the legacy `function`-typed
-  `search_documents` tool, `_needs_refresh()` detects that and recreates the
-  runtime agent with the new `azure_ai_search` tool.
+This module only manages the portal-registered agent version — there is no
+separate runtime `asst_xxx` agent because the MCP tool (for our Foundry IQ
+Knowledge Base) is not supported by the legacy Assistants API.
 """
 
 from __future__ import annotations
@@ -33,21 +17,24 @@ from typing import Optional
 from fastapi import HTTPException
 
 from app.config import settings
-from app.knowledge import ensure_search_knowledge_source
+from app.knowledge_base import ensure_knowledge_base
 
 logger = logging.getLogger(__name__)
 
-_agent_id: Optional[str] = None
-_project_client = None  # AIProjectClient (azure-ai-projects) — portal registration
-_agents_client = None   # AgentsClient (azure-ai-agents) — runtime threads/runs/messages
+_agent_ready: bool = False
+_agent_name_cache: Optional[str] = None
+_project_client = None
 
 AGENT_NAME = "rag-chat-agent"
 
 AGENT_INSTRUCTIONS = (
-    "You are a helpful assistant that answers questions grounded in the workshop "
-    "knowledge base. Use the retrieved passages to compose your answer and cite "
-    "the source document by its title or filename for every fact. If the answer "
-    "is not present in the knowledge base, say so clearly."
+    "You are a helpful assistant that must use the knowledge base to answer all "
+    "questions from the user. Do NOT answer from your own general knowledge — "
+    "always call the knowledge base tool first. Every answer must include "
+    "citations to the retrieved sources, rendered as "
+    "\u3010message_idx:search_idx\u2020source_name\u3011. If the answer is not "
+    "present in the knowledge base, respond with \"I don't know based on the "
+    "workshop knowledge base.\""
 )
 
 
@@ -59,7 +46,8 @@ def _get_credential():
     return DefaultAzureCredential()
 
 
-def _get_project_client():
+def get_project_client():
+    """Return AIProjectClient(allow_preview=True) — used by chat.py too."""
     global _project_client
 
     if not settings.is_configured:
@@ -79,167 +67,57 @@ def _get_project_client():
     return _project_client
 
 
-def get_agents_client():
-    """Return the standalone AgentsClient for thread/run/message operations."""
-    global _agents_client
-
-    if not settings.is_configured:
-        raise HTTPException(
-            status_code=503,
-            detail="Azure AI services not configured. Set AZURE_AI_PROJECT_ENDPOINT.",
-        )
-
-    if _agents_client is None:
-        from azure.ai.agents import AgentsClient
-
-        _agents_client = AgentsClient(
-            endpoint=settings.azure_ai_project_endpoint,
-            credential=_get_credential(),
-        )
-
-    return _agents_client
+def get_agent_name() -> str:
+    """Return the Foundry-portal agent name to pass in Responses.agent_reference."""
+    return _agent_name_cache or AGENT_NAME
 
 
-def _build_runtime_search_tool():
-    """Build the AgentsClient-flavoured AzureAISearchTool bound to the workshop index."""
-    from azure.ai.agents.models import AzureAISearchTool, AzureAISearchQueryType
+def create_or_get_agent() -> str:
+    """Ensure the portal-registered agent version exists.
 
-    refs = ensure_search_knowledge_source()
-    return AzureAISearchTool(
-        index_connection_id=refs.project_connection_id,
-        index_name=refs.index_name,
-        query_type=AzureAISearchQueryType.VECTOR_SEMANTIC_HYBRID,
-        top_k=5,
-        index_asset_id=refs.index_asset_id or "",
+    Returns the agent name (used by chat.py in the Responses `agent_reference`).
+    Idempotent.
+    """
+    global _agent_ready, _agent_name_cache
+
+    if _agent_ready:
+        return _agent_name_cache or AGENT_NAME
+
+    from azure.ai.projects.models import MCPTool, PromptAgentDefinition
+
+    refs = ensure_knowledge_base()
+    mcp_tool = MCPTool(
+        server_label="knowledge-base",
+        server_url=refs.mcp_endpoint,
+        project_connection_id=refs.project_connection_id,
+        allowed_tools=["knowledge_base_retrieve"],
+        require_approval="never",
+    )
+    definition = PromptAgentDefinition(
+        model=settings.agent_model,
+        instructions=AGENT_INSTRUCTIONS,
+        tools=[mcp_tool],
     )
 
-
-def _needs_refresh(agent) -> bool:
-    """True if the persisted agent is still on the legacy function tool."""
     try:
-        for tool in getattr(agent, "tools", []) or []:
-            t_type = getattr(tool, "type", None) or (isinstance(tool, dict) and tool.get("type"))
-            if t_type == "azure_ai_search":
-                return False
-        return True
-    except Exception:
-        return True
-
-
-def _ensure_portal_agent(search_tool) -> None:
-    """Register/update the RAG agent in the Foundry portal (Type=prompt)."""
-    try:
-        project_client = _get_project_client()
-        project_agents = project_client.agents
-
-        from azure.ai.projects.models import (
-            AISearchIndexResource,
-            AzureAISearchQueryType,
-            AzureAISearchTool as ProjectAISearchTool,
-            AzureAISearchToolResource,
-            PromptAgentDefinition,
-        )
-
-        refs = ensure_search_knowledge_source()
-        portal_tool = ProjectAISearchTool(
-            azure_ai_search=AzureAISearchToolResource(
-                indexes=[
-                    AISearchIndexResource(
-                        project_connection_id=refs.project_connection_id,
-                        index_name=refs.index_name,
-                        query_type=AzureAISearchQueryType.VECTOR_SEMANTIC_HYBRID,
-                        top_k=5,
-                        index_asset_id=refs.index_asset_id or "",
-                    )
-                ]
-            )
-        )
-
-        definition = PromptAgentDefinition(
-            model=settings.agent_model,
-            instructions=AGENT_INSTRUCTIONS,
-            tools=[portal_tool],
-        )
-
-        agent_version = project_agents.create_version(
+        agent_version = get_project_client().agents.create_version(
             AGENT_NAME,
             definition=definition,
-            description="RAG chat agent — grounded via Foundry IQ + AI Search knowledge source",
+            description="RAG chat agent — grounded via Foundry IQ Knowledge Base (MCP)",
         )
         logger.info(
-            "Registered Foundry portal agent '%s' version %s (id=%s)",
+            "Portal agent '%s' version %s registered (id=%s)",
             AGENT_NAME,
             getattr(agent_version, "version", "?"),
             getattr(agent_version, "id", "?"),
         )
-
     except Exception as exc:
-        logger.warning(
-            "Portal agent registration failed (non-fatal — chat will still work): %s", exc
-        )
-
-
-def _create_runtime_agent(search_tool):
-    """Create a fresh runtime agent bound to the knowledge source."""
-    agents_client = get_agents_client()
-    agent = agents_client.create_agent(
-        model=settings.agent_model,
-        name=AGENT_NAME,
-        instructions=AGENT_INSTRUCTIONS,
-        tools=search_tool.definitions,
-        tool_resources=search_tool.resources,
-    )
-    logger.info(
-        "Created runtime agent '%s': %s (model=%s, knowledge=AI Search)",
-        AGENT_NAME, agent.id, settings.agent_model,
-    )
-    return agent
-
-
-def create_or_get_agent() -> str:
-    """Return the ID of the RAG runtime agent, creating (or refreshing) it as needed."""
-    global _agent_id
-
-    if _agent_id is not None:
-        return _agent_id
-
-    agents_client = get_agents_client()
-    search_tool = _build_runtime_search_tool()
-
-    # Validate the persisted AGENT_ID before reusing.
-    if settings.agent_id:
-        try:
-            agent = agents_client.get_agent(settings.agent_id)
-            if _needs_refresh(agent):
-                logger.info(
-                    "Runtime agent %s uses a legacy tool — deleting and recreating "
-                    "with the AI Search knowledge source.", settings.agent_id,
-                )
-                try:
-                    agents_client.delete_agent(settings.agent_id)
-                except Exception as exc:
-                    logger.warning("Delete of stale agent failed (continuing): %s", exc)
-                agent = _create_runtime_agent(search_tool)
-            else:
-                logger.info("Reusing runtime agent: %s", agent.id)
-            _agent_id = agent.id
-            _ensure_portal_agent(search_tool)
-            return _agent_id
-        except Exception as exc:
-            logger.warning(
-                "AGENT_ID '%s' invalid — creating new runtime agent. (%s)",
-                settings.agent_id, exc,
-            )
-
-    try:
-        agent = _create_runtime_agent(search_tool)
-        _agent_id = agent.id
-    except Exception as exc:
-        logger.error("Failed to create runtime agent: %s", exc)
+        logger.error("Failed to register portal agent: %s", exc)
         raise HTTPException(
             status_code=503,
             detail=f"Failed to initialize AI agent: {exc}",
         ) from exc
 
-    _ensure_portal_agent(search_tool)
-    return _agent_id
+    _agent_name_cache = AGENT_NAME
+    _agent_ready = True
+    return _agent_name_cache

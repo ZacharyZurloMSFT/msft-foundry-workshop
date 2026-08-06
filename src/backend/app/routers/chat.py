@@ -1,22 +1,21 @@
-"""Chat router — RAG chat endpoints powered by Foundry Agent Service.
+"""Chat router — Foundry Agent Service via Responses API + agent_reference.
 
-Retrieval is grounded through the Foundry IQ knowledge source attached to the
-agent (see `app/agent.py`). The runtime performs the AI Search query itself and
-attaches citations as message annotations — the backend just polls until the
-run completes and returns the assistant message + citations.
+We invoke the versioned Foundry agent (see `app/agent.py`) through the OpenAI
+Responses API on the Foundry project. The agent's Foundry IQ Knowledge Base
+(MCP tool) does retrieval on the runtime, and citation annotations come back
+inline in the response.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import time
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from app.agent import create_or_get_agent, get_agents_client
+from app.agent import create_or_get_agent, get_agent_name, get_project_client
 from app.models import (
     ChatRequest,
     ChatResponse,
@@ -34,84 +33,72 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _get_text_content(message) -> str:
-    """Extract plain text from an agent message's content blocks."""
-    parts: list[str] = []
-    for block in message.content:
-        if hasattr(block, "text"):
-            text_val = block.text
-            parts.append(text_val.value if hasattr(text_val, "value") else str(text_val))
-    return "\n".join(parts) if parts else ""
+def _openai_client():
+    return get_project_client().get_openai_client()
 
 
-def _extract_citations(message) -> list[Citation]:
-    """Pull URL / file citations from a message's text annotations.
+def _agent_reference() -> dict:
+    return {"agent_reference": {"name": get_agent_name(), "type": "agent_reference"}}
 
-    The Foundry Agents runtime emits `url_citation` and `file_citation`
-    annotations on assistant messages when a knowledge source is used.
-    """
-    citations: list[Citation] = []
+
+def _extract_citations(response) -> list[Citation]:
+    """Pull URL / MCP citations from a Responses API result."""
     seen: set[tuple[str, str]] = set()
+    citations: list[Citation] = []
 
-    for block in getattr(message, "content", []) or []:
-        text_val = getattr(block, "text", None)
-        if text_val is None:
-            continue
-        for ann in getattr(text_val, "annotations", []) or []:
-            title = ""
-            url = ""
-            excerpt = getattr(ann, "text", "") or ""
-
-            url_cit = getattr(ann, "url_citation", None)
-            file_cit = getattr(ann, "file_citation", None)
-
-            if url_cit is not None:
-                title = getattr(url_cit, "title", "") or ""
-                url = getattr(url_cit, "url", "") or ""
-            elif file_cit is not None:
-                title = getattr(file_cit, "file_name", "") or getattr(file_cit, "title", "") or ""
-                url = getattr(file_cit, "file_id", "") or ""
-
-            key = (title, url)
-            if title and key not in seen:
-                seen.add(key)
-                citations.append(Citation(title=title, url=url, content=excerpt))
-
+    output = getattr(response, "output", None) or []
+    for item in output:
+        content = getattr(item, "content", None) or []
+        for block in content:
+            for ann in getattr(block, "annotations", None) or []:
+                title = getattr(ann, "title", "") or getattr(ann, "filename", "") or ""
+                url = getattr(ann, "url", "") or getattr(ann, "file_id", "") or ""
+                excerpt = getattr(ann, "text", "") or ""
+                key = (title, url)
+                if (title or url) and key not in seen:
+                    seen.add(key)
+                    citations.append(Citation(title=title or "source", url=url, content=excerpt))
     return citations
 
 
+def _response_text(response) -> str:
+    txt = getattr(response, "output_text", None)
+    if txt:
+        return txt
+    parts: list[str] = []
+    for item in getattr(response, "output", None) or []:
+        for block in getattr(item, "content", None) or []:
+            t = getattr(block, "text", None)
+            if isinstance(t, str):
+                parts.append(t)
+            elif t is not None:
+                v = getattr(t, "value", None)
+                if v:
+                    parts.append(v)
+    return "\n".join(parts)
+
+
 # ---------------------------------------------------------------------------
-# Core agent run — synchronous, waits for completion
+# Core sync call
 # ---------------------------------------------------------------------------
 
-def _run_agent_sync(thread_id: str, message: str) -> tuple[str, list[Citation], str]:
-    """Run the agent to completion and return (response_text, citations, thread_id).
+def _run_agent_sync(conversation_id: Optional[str], message: str) -> tuple[str, list[Citation], str]:
+    """Send `message` to the agent via Responses API. Returns (text, citations, conv_id)."""
+    create_or_get_agent()  # idempotent — registers/refreshes the version
+    client = _openai_client()
 
-    Blocks until the run is done or fails. Always called from an executor so it
-    never blocks the event loop.
-    """
-    agents_client = get_agents_client()
-    agent_id = create_or_get_agent()
+    if not conversation_id:
+        conv = client.conversations.create()
+        conversation_id = conv.id
 
-    agents_client.messages.create(thread_id=thread_id, role="user", content=message)
-
-    run = agents_client.runs.create(thread_id=thread_id, agent_id=agent_id)
-    logger.info("Agent run started: %s (thread=%s)", run.id, thread_id)
-
-    while run.status in ("queued", "in_progress", "requires_action"):
-        time.sleep(1)
-        run = agents_client.runs.get(thread_id=thread_id, run_id=run.id)
-
-    if run.status != "completed":
-        error = getattr(run, "last_error", run.status)
-        raise Exception(f"Agent run failed: {error}")
-
-    # Grab the latest assistant message
-    for msg in agents_client.messages.list(thread_id=thread_id, order="desc"):
-        if msg.role == "assistant":
-            return _get_text_content(msg), _extract_citations(msg), thread_id
-
-    return "", [], thread_id
+    resp = client.responses.create(
+        conversation=conversation_id,
+        input=message,
+        extra_body=_agent_reference(),
+    )
+    text = _response_text(resp) or ""
+    citations = _extract_citations(resp)
+    return text, citations, conversation_id
 
 
 # ---------------------------------------------------------------------------
@@ -120,90 +107,79 @@ def _run_agent_sync(thread_id: str, message: str) -> tuple[str, list[Citation], 
 
 @router.post("", response_model=ChatResponse)
 def chat(request: ChatRequest) -> ChatResponse:
-    """Send a message to the RAG agent and return the complete response."""
-    agents_client = get_agents_client()
-
-    thread_id = request.thread_id
-    if not thread_id:
-        thread = agents_client.threads.create()
-        thread_id = thread.id
-
-    response_text, citations, thread_id = _run_agent_sync(thread_id, request.message)
-
-    return ChatResponse(response=response_text, thread_id=thread_id, citations=citations)
+    response_text, citations, conv_id = _run_agent_sync(request.thread_id, request.message)
+    return ChatResponse(response=response_text, thread_id=conv_id, citations=citations)
 
 
 # ---------------------------------------------------------------------------
 # POST /api/chat/stream  (Server-Sent Events)
 # ---------------------------------------------------------------------------
 
-async def _stream_generator(thread_id: str, message: str) -> AsyncGenerator[str, None]:
-    """Run the agent in a thread pool, then stream the response word-by-word."""
+async def _stream_generator(conversation_id: Optional[str], message: str) -> AsyncGenerator[str, None]:
     loop = asyncio.get_event_loop()
 
     try:
-        response_text, citations, _ = await loop.run_in_executor(
-            None, _run_agent_sync, thread_id, message
+        response_text, citations, conv_id = await loop.run_in_executor(
+            None, _run_agent_sync, conversation_id, message
         )
     except Exception as exc:
         logger.error("Agent run failed: %s", exc)
-        error_event = StreamEvent(delta=f"Error: {exc}", thread_id=thread_id, done=True)
+        error_event = StreamEvent(delta=f"Error: {exc}", thread_id=conversation_id or "", done=True)
         yield f"data: {error_event.model_dump_json()}\n\n"
         return
 
     words = response_text.split(" ")
     for i, word in enumerate(words):
         chunk = word + (" " if i < len(words) - 1 else "")
-        payload = StreamEvent(delta=chunk, thread_id=thread_id)
+        payload = StreamEvent(delta=chunk, thread_id=conv_id)
         yield f"data: {payload.model_dump_json()}\n\n"
         await asyncio.sleep(0.02)
 
-    final = StreamEvent(done=True, thread_id=thread_id, citations=citations)
+    final = StreamEvent(done=True, thread_id=conv_id, citations=citations)
     yield f"data: {final.model_dump_json()}\n\n"
 
 
 @router.post("/stream")
 async def chat_stream(request: ChatRequest) -> StreamingResponse:
-    """Stream a response from the RAG agent via Server-Sent Events."""
-    agents_client = get_agents_client()
-
-    thread_id = request.thread_id
-    if not thread_id:
-        loop = asyncio.get_event_loop()
-        thread = await loop.run_in_executor(None, agents_client.threads.create)
-        thread_id = thread.id
-
     return StreamingResponse(
-        _stream_generator(thread_id, request.message),
+        _stream_generator(request.thread_id, request.message),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
 # ---------------------------------------------------------------------------
-# GET /api/chat/threads/{thread_id}/messages
+# GET /api/chat/threads/{thread_id}/messages  (list conversation messages)
 # ---------------------------------------------------------------------------
 
 @router.get("/threads/{thread_id}/messages", response_model=ThreadMessages)
 def get_thread_messages(thread_id: str) -> ThreadMessages:
-    """Retrieve all messages in a conversation thread."""
-    agents_client = get_agents_client()
-
+    client = _openai_client()
     try:
-        messages = agents_client.messages.list(thread_id=thread_id, order="asc")
+        items_page = client.conversations.items.list(conversation_id=thread_id, order="asc")
     except Exception as exc:
-        raise HTTPException(status_code=404, detail=f"Thread not found: {exc}") from exc
+        raise HTTPException(status_code=404, detail=f"Conversation not found: {exc}") from exc
 
-    items: list[MessageItem] = [
-        MessageItem(
-            id=msg.id,
-            role=msg.role,
-            content=_get_text_content(msg),
-            created_at=str(msg.created_at) if hasattr(msg, "created_at") else None,
+    items: list[MessageItem] = []
+    for it in items_page:
+        role = getattr(it, "role", None) or "assistant"
+        text_parts: list[str] = []
+        for block in getattr(it, "content", None) or []:
+            t = getattr(block, "text", None)
+            if isinstance(t, str):
+                text_parts.append(t)
+            elif t is not None:
+                v = getattr(t, "value", None)
+                if v:
+                    text_parts.append(v)
+        items.append(
+            MessageItem(
+                id=getattr(it, "id", ""),
+                role=role,
+                content="\n".join(text_parts),
+                created_at=str(getattr(it, "created_at", "")) if hasattr(it, "created_at") else None,
+            )
         )
-        for msg in messages
-    ]
-
     return ThreadMessages(thread_id=thread_id, messages=items)
 
 
@@ -213,9 +189,8 @@ def get_thread_messages(thread_id: str) -> ThreadMessages:
 
 @router.delete("/threads/{thread_id}", status_code=204)
 def delete_thread(thread_id: str) -> None:
-    """Delete a conversation thread."""
-    agents_client = get_agents_client()
+    client = _openai_client()
     try:
-        agents_client.threads.delete(thread_id)
+        client.conversations.delete(conversation_id=thread_id)
     except Exception as exc:
-        raise HTTPException(status_code=404, detail=f"Thread not found: {exc}") from exc
+        raise HTTPException(status_code=404, detail=f"Conversation not found: {exc}") from exc

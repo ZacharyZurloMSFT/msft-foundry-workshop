@@ -30,18 +30,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Could not create search index: %s", e)
 
-    # Register the AI Search index as a Foundry Knowledge Source (Foundry IQ).
-    # Shows up under Knowledge in the Foundry portal and is what the agent uses
-    # for retrieval instead of a custom search_documents function tool.
+    # Create or refresh the Foundry IQ Knowledge Base + RemoteTool project
+    # connection. The KB lives on Azure AI Search and exposes an MCP endpoint;
+    # the agent will attach it via MCPTool so it appears under Knowledge in the
+    # Foundry portal (not under Tools).
     from app.config import settings
     if settings.is_configured:
         try:
-            from app.knowledge import ensure_search_knowledge_source
-            ensure_search_knowledge_source()
-            logger.info("Foundry knowledge source ready")
+            from app.knowledge_base import ensure_knowledge_base
+            ensure_knowledge_base()
+            logger.info("Foundry IQ knowledge base ready")
         except Exception as e:
             logger.warning(
-                "Knowledge source registration failed (agent may still work with older config): %s",
+                "Knowledge base registration failed (agent will still start but retrieval will not work): %s",
                 e,
             )
 

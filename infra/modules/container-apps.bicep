@@ -185,6 +185,14 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'AZURE_MANAGED_IDENTITY_CLIENT_ID'
               value: managedIdentityClientId
             }
+            {
+              name: 'AZURE_SUBSCRIPTION_ID'
+              value: subscription().subscriptionId
+            }
+            {
+              name: 'AZURE_RESOURCE_GROUP'
+              value: resourceGroup().name
+            }
           ]
         }
       ]
