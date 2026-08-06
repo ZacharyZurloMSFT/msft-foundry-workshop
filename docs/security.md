@@ -65,7 +65,7 @@ The `security.bicep` module assigns least-privilege roles to the managed identit
 | **Key Vault Secrets User** | Key Vault | Read secrets (if needed) |
 | **Azure AI Developer** | AI Foundry Hub | Create and manage agents |
 
-The deploying user's principal ID also receives these roles for local development and `azd` operations.
+The deploying user's principal ID also receives these roles for local development and CLI operations.
 
 ## Secrets Management
 

@@ -13,8 +13,8 @@ param tags = {
 }
 
 // Principal ID for role assignments.
-// When deploying via GitHub Actions, this is overridden by the AZURE_PRINCIPAL_ID variable
-// (see deploy.yml: azd env config set infra.parameters.principalId).
-// For local deploys, get your object ID with:
+// The scripts\deploy-infra.ps1 script auto-fills this from `az ad signed-in-user show`,
+// overriding the value below. If you deploy `az deployment group create` by hand,
+// pass --parameters principalId=<your object id>. Get your object ID with:
 //   az ad signed-in-user show --query id -o tsv
 param principalId = '<REPLACE_WITH_YOUR_PRINCIPAL_ID>'

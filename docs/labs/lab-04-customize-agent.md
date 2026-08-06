@@ -43,8 +43,9 @@ AGENT_INSTRUCTIONS = (
 
 ### Deploy the change
 
-```bash
-azd deploy
+```powershell
+.\scripts\build-and-push.ps1
+.\scripts\update-apps.ps1
 ```
 
 ### Expected result
@@ -77,8 +78,9 @@ agent_model: str = "gpt-4o"
 
 ### Deploy the change
 
-```bash
-azd deploy
+```powershell
+.\scripts\build-and-push.ps1
+.\scripts\update-apps.ps1
 ```
 
 ### Expected result
@@ -131,7 +133,7 @@ DEFAULT_CHUNK_OVERLAP = 400
 
 After changing chunk parameters, you need to re-upload your documents for the new settings to take effect. The existing chunks in the index were created with the old parameters.
 
-1. Deploy: `azd deploy`
+1. Deploy: `.\scripts\build-and-push.ps1; .\scripts\update-apps.ps1`
 2. Re-upload your sample document through the app
 
 ### Expected result
@@ -171,8 +173,9 @@ Look for the messages rendering section and add a conditional:
 
 ### Deploy the change
 
-```bash
-azd deploy
+```powershell
+.\scripts\build-and-push.ps1
+.\scripts\update-apps.ps1
 ```
 
 ### Expected result

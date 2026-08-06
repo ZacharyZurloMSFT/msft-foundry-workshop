@@ -12,3 +12,6 @@ dist/
 # Environment & secrets
 .env
 .agent-config.json
+
+# Deployment state (Bicep outputs cache)
+.deploy-state/

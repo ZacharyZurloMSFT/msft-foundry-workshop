@@ -4,92 +4,79 @@
 
 ## Objective
 
-Deploy all Azure resources for the RAG workshop using the Azure Developer CLI (`azd`). By the end of this lab you will have a fully provisioned environment including Azure AI Foundry, AI Search, Container Apps, Key Vault, Storage, and networking.
+Deploy all Azure resources for the RAG workshop using **Bicep** for infrastructure and **`az` CLI** PowerShell scripts for images, container updates, the Search index, and the Foundry agent. By the end of this lab you'll have a fully provisioned environment: Azure AI Foundry, AI Search, Container Apps, Key Vault, Storage, and networking — all deployed and ready.
 
 ## Prerequisites
 
-- Azure subscription with sufficient permissions (Owner or Contributor + User Access Administrator)
-- Azure CLI and Azure Developer CLI installed (see [Lab Guide README](README.md))
+- Azure subscription with sufficient permissions (Owner, or Contributor + User Access Administrator)
+- Azure CLI (`az`) and PowerShell 7+ installed (see the main [README](../../README.md))
 
 ## Steps
 
 ### 1. Clone the repository
 
-```bash
+```powershell
 git clone https://github.com/zzurlo/msft-foundry-workshop.git
 cd msft-foundry-workshop
 ```
 
 ### 2. Log in to Azure
 
-```bash
-# Log in to Azure CLI
+```powershell
 az login
-
-# Log in to Azure Developer CLI
-azd auth login
 ```
 
 > **Tip:** If you have multiple subscriptions, set the one you want to use:
-> ```bash
+> ```powershell
 > az account set --subscription "<subscription-name-or-id>"
 > ```
 
-### 3. Initialize the environment
+### 3. Deploy everything
 
-```bash
-azd init
+Run the one-shot orchestrator:
+
+```powershell
+.\scripts\deploy-all.ps1 -EnvironmentName dev -Location centralus
 ```
 
-When prompted:
-- **Environment name:** Choose a short, unique name (e.g., `foundry-workshop-dev`). This becomes a prefix for all resources.
-- Accept the defaults for other prompts.
+This runs the following stages in order:
 
-### 4. Deploy everything
+1. **Infrastructure** — `az deployment group create` against `infra\main.bicep` (VNet + private endpoints, AI Foundry, AI Search, Container Apps env + ACR, Key Vault, Storage, Log Analytics, managed identity + RBAC).
+2. **Images** — `az acr build` builds and pushes the backend and frontend containers.
+3. **Container apps** — `az containerapp update` swaps the placeholder images with the ones you just pushed.
+4. **Search index** — creates the `documents` index in AI Search.
+5. **Foundry agent** — creates the RAG agent and persists its ID on the backend container app.
+6. **Sample data** — uploads `docs\samples\*.txt` so you can chat with them immediately.
 
-```bash
-azd up
-```
+The deployment takes approximately **10–15 minutes** end-to-end.
 
-When prompted:
-- **Azure subscription:** Select your subscription.
-- **Azure location:** Choose a region that supports Azure OpenAI (e.g., `eastus2`, `swedencentral`).
+### 4. Note the outputs
 
-This command will:
-1. Provision all infrastructure via Bicep templates (`infra/`)
-2. Build and deploy the frontend and backend container apps
-3. Configure networking, Key Vault, and managed identities
-
-The deployment takes approximately **10–15 minutes**.
-
-### 5. Note the outputs
-
-When `azd up` completes it prints output values including the **frontend URL**. Copy this — you'll use it in subsequent labs.
+When `deploy-all.ps1` finishes it prints the frontend and backend URLs. All Bicep outputs are also cached to `.deploy-state\outputs.json` — you can re-run any single stage script and it will pick them up automatically.
 
 ```
-Outputs:
-  frontendUrl: https://<your-app>.azurecontainerapps.io
+✔ Deploy complete
+  Frontend: https://ca-frontend-dev.<region>.azurecontainerapps.io
+  Backend:  https://ca-backend-dev.<region>.azurecontainerapps.io
 ```
 
 ## Verify
 
-### In the terminal
+### From the CLI
 
-```bash
-azd show
+```powershell
+az resource list --resource-group rg-dev --output table
 ```
-
-This lists all deployed resources and their status.
 
 ### In the Azure Portal
 
 1. Go to [portal.azure.com](https://portal.azure.com)
-2. Navigate to **Resource groups** and find the resource group matching your environment name
+2. Open resource group **`rg-dev`**
 3. Confirm these resources exist:
 
 | Resource | Type | What to look for |
 |----------|------|-------------------|
-| AI Foundry project | `Microsoft.MachineLearningServices/workspaces` | Status: Succeeded |
+| AI Foundry account + project | `Microsoft.CognitiveServices/accounts` | Status: Succeeded |
 | AI Search | `Microsoft.Search/searchServices` | Status: Running |
 | Container Apps (frontend) | `Microsoft.App/containerApps` | Status: Running |
 | Container Apps (backend) | `Microsoft.App/containerApps` | Status: Running |
@@ -97,38 +84,31 @@ This lists all deployed resources and their status.
 | Storage Account | `Microsoft.Storage/storageAccounts` | Status: Available |
 | Container Apps Environment | `Microsoft.App/managedEnvironments` | Status: Succeeded |
 | Virtual Network | `Microsoft.Network/virtualNetworks` | Subnets configured |
+| Container Registry | `Microsoft.ContainerRegistry/registries` | Contains backend + frontend images |
 
 ### Open the app
 
-Open the **frontend URL** from the deployment outputs in your browser. You should see the workshop application's landing page.
-
-## Screenshots guidance
-
-Here's where to look in the Azure Portal to verify each component:
-
-- **Resource Group overview** → Shows all resources at a glance
-- **AI Search → Overview** → Check the service is running; note the URL
-- **Container Apps → Overview** → Check the provisioning state and URL
-- **Key Vault → Secrets** → Verify secrets were created (you won't see values)
-- **Virtual Network → Subnets** → Verify subnet configuration
+Open the **frontend URL** from the deploy output in your browser. You should see the workshop application's landing page and be able to chat over the seeded sample docs.
 
 ## Troubleshooting
 
 | Problem | Cause | Fix |
 |---------|-------|-----|
-| `azd up` fails with "quota exceeded" | Region doesn't have enough capacity | Try a different region: `azd up --location swedencentral` |
-| `azd auth login` hangs | Browser pop-up blocked | Use `azd auth login --use-device-code` |
-| "Subscription not found" | Wrong subscription selected | Run `az account set --subscription <id>` then retry |
-| Container Apps show "Failed" | Docker build error or missing env vars | Run `azd deploy` to retry just the deployment step |
-| "OpenAI resource not available in region" | Region doesn't support Azure OpenAI | Choose `eastus2`, `swedencentral`, or `westus3` |
-| Timeout during provisioning | Large Bicep deployment | Wait and retry with `azd provision`; it's idempotent |
+| Deployment fails with "quota exceeded" | Region doesn't have GPT-4o-mini capacity | Re-run: `.\scripts\deploy-all.ps1 -Location swedencentral` |
+| `az login` hangs | Browser pop-up blocked | Use `az login --use-device-code` |
+| "Subscription not found" | Wrong subscription selected | `az account set --subscription <id>` and re-run |
+| Container app shows "Failed" after update | Image build failure | Re-run `.\scripts\build-and-push.ps1` then `.\scripts\update-apps.ps1` |
+| "OpenAI resource not available in region" | Region doesn't support Azure OpenAI | Use `eastus2`, `swedencentral`, or `westus3` |
+| Bicep deployment times out | Transient Azure-side issue | Re-run `.\scripts\deploy-infra.ps1` — it's idempotent |
+| Search index empty | `create-index.ps1` didn't run | Re-run `.\scripts\create-index.ps1` |
 
 ## ✅ Checkpoint
 
 Before moving to Lab 2, confirm:
-- [ ] `azd up` completed successfully
-- [ ] You can see all resources in the Azure Portal
+- [ ] `.\scripts\deploy-all.ps1` completed successfully
+- [ ] You can see all resources in the Azure Portal under `rg-dev`
 - [ ] The frontend URL loads in your browser
+- [ ] You can chat with the seeded sample documents
 
 ---
 
