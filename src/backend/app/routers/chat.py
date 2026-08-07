@@ -14,21 +14,52 @@ import asyncio
 import json
 import logging
 import time
+from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
+from app import conversation_store
 from app.agent import create_or_get_agent, get_agents_client
 from app.clients import get_search_client
 from app.models import (
     ChatRequest,
     ChatResponse,
     Citation,
+    ConversationMetadata,
     MessageItem,
     StreamEvent,
     ThreadMessages,
 )
+
+_TITLE_MAX_LEN = 60
+
+
+def _derive_title(message: str) -> str:
+    """Derive a short conversation title from the first user message."""
+    cleaned = " ".join(message.split())
+    if len(cleaned) <= _TITLE_MAX_LEN:
+        return cleaned or "New conversation"
+    return cleaned[: _TITLE_MAX_LEN - 1].rstrip() + "…"
+
+
+def _ensure_conversation_registered(thread_id: str, first_message: str) -> None:
+    """Register the thread in conversation_store if it isn't already.
+
+    The chat/chat_stream endpoints create Foundry threads directly (bypassing
+    POST /api/conversations), so without this the sidebar never sees them.
+    """
+    if conversation_store.get(thread_id) is not None:
+        return
+    conversation_store.add(
+        ConversationMetadata(
+            thread_id=thread_id,
+            title=_derive_title(first_message),
+            created_at=datetime.now(timezone.utc).isoformat(),
+            message_count=0,
+        )
+    )
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -154,7 +185,11 @@ def chat(request: ChatRequest) -> ChatResponse:
         thread = agents_client.threads.create()
         thread_id = thread.id
 
+    _ensure_conversation_registered(thread_id, request.message)
+
     response_text, thread_id = _run_agent_sync(thread_id, request.message)
+
+    conversation_store.increment_message_count(thread_id, 2)
 
     return ChatResponse(response=response_text, thread_id=thread_id, citations=[])
 
@@ -171,6 +206,7 @@ async def _stream_generator(thread_id: str, message: str) -> AsyncGenerator[str,
         response_text, _ = await loop.run_in_executor(
             None, _run_agent_sync, thread_id, message
         )
+        conversation_store.increment_message_count(thread_id, 2)
     except Exception as exc:
         logger.error("Agent run failed: %s", exc)
         error_event = StreamEvent(delta=f"Error: {exc}", thread_id=thread_id, done=True)
@@ -199,6 +235,8 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
         loop = asyncio.get_event_loop()
         thread = await loop.run_in_executor(None, agents_client.threads.create)
         thread_id = thread.id
+
+    _ensure_conversation_registered(thread_id, request.message)
 
     return StreamingResponse(
         _stream_generator(thread_id, request.message),
