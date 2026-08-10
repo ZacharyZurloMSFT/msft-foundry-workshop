@@ -24,7 +24,25 @@ param(
 Require-Command az
 
 if (-not $ResourceGroup) { $ResourceGroup = "rg-$EnvironmentName" }
-if (-not $ParameterFile) { $ParameterFile = Join-Path $RepoRoot "infra\parameters\$EnvironmentName.bicepparam" }
+
+# Resolve parameter file:
+#   1. Explicit -ParameterFile wins.
+#   2. Otherwise use infra\parameters\<EnvironmentName>.bicepparam if it exists.
+#   3. Otherwise fall back to infra\parameters\default.bicepparam and override
+#      environmentName / location on the command line so any unique env name
+#      "just works" without needing to create a new file.
+$usingDefaultParamFile = $false
+if (-not $ParameterFile) {
+    $envParamFile     = Join-Path $RepoRoot "infra\parameters\$EnvironmentName.bicepparam"
+    $defaultParamFile = Join-Path $RepoRoot "infra\parameters\default.bicepparam"
+    if (Test-Path $envParamFile) {
+        $ParameterFile = $envParamFile
+    } elseif (Test-Path $defaultParamFile) {
+        $ParameterFile = $defaultParamFile
+        $usingDefaultParamFile = $true
+        Write-Info "No parameter file for '$EnvironmentName'; using default.bicepparam with CLI overrides."
+    }
+}
 if (-not (Test-Path $ParameterFile)) { throw "Parameter file not found: $ParameterFile" }
 
 if ($SubscriptionId) {
@@ -50,13 +68,23 @@ Write-Info "Deploying Bicep (this can take 10-20 minutes)..."
 Write-Info "  parameters: $ParameterFile"
 Write-Info "  deployment: $deploymentName"
 
-$deployJson = az deployment group create `
-    --resource-group $ResourceGroup `
-    --name $deploymentName `
-    --template-file (Join-Path $RepoRoot 'infra\main.bicep') `
-    --parameters $ParameterFile `
-    --parameters "principalId=$PrincipalId" `
-    --output json
+$deployArgs = @(
+    'deployment', 'group', 'create',
+    '--resource-group', $ResourceGroup,
+    '--name', $deploymentName,
+    '--template-file', (Join-Path $RepoRoot 'infra\main.bicep'),
+    '--parameters', $ParameterFile,
+    '--parameters', "principalId=$PrincipalId"
+)
+if ($usingDefaultParamFile) {
+    # Override the placeholder values in default.bicepparam so the user's
+    # unique EnvironmentName / Location drive resource naming.
+    $deployArgs += @('--parameters', "environmentName=$EnvironmentName")
+    $deployArgs += @('--parameters', "location=$Location")
+}
+$deployArgs += @('--output', 'json')
+
+$deployJson = az @deployArgs
 
 if ($LASTEXITCODE -ne 0) { throw "Bicep deployment failed." }
 
