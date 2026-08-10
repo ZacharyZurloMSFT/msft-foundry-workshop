@@ -73,8 +73,11 @@ cd msft-foundry-workshop
 az login
 
 # Deploy everything (infra → images → apps → index → agent → sample docs)
-.\scripts\deploy-all.ps1 -EnvironmentName dev -Location centralus
+# Pick any short, unique environment name — it becomes part of every resource name.
+.\scripts\deploy-all.ps1 -EnvironmentName myrag -Location centralus
 ```
+
+`-EnvironmentName` can be anything short and unique (lowercase letters/numbers). If no matching `<name>.bicepparam` file exists, the scripts fall back to `infra\parameters\default.bicepparam` and override `environmentName` / `location` on the CLI — so you don't need to create a file per environment. Drop in `infra\parameters\<name>.bicepparam` only if you want custom tags or non-default settings.
 
 The orchestrator runs each stage in order and prints the final frontend/backend URLs when done. Deployment outputs are cached to `.deploy-state/outputs.json` so you can re-run individual stages without redeploying infra.
 
@@ -128,6 +131,7 @@ msft-foundry-workshop/
 │   ├── main.parameters.json        # Default parameter file
 │   ├── abbreviations.json          # Resource naming abbreviation map
 │   ├── parameters/
+│   │   ├── default.bicepparam      # Fallback template — used for any -EnvironmentName without its own file
 │   │   ├── dev.bicepparam          # Dev environment parameters (basic SKU)
 │   │   └── prod.bicepparam         # Prod environment parameters
 │   └── modules/
