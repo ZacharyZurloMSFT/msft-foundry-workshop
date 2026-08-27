@@ -1,5 +1,7 @@
 # Azure AI Foundry Workshop — Build a RAG Chat Application
 
+Hello!
+
 Build and deploy an enterprise-grade **Retrieval-Augmented Generation (RAG)** application using **Azure AI Foundry**, **Azure AI Search**, and **Azure Container Apps**.
 
 **What you'll build:** A chat application that answers questions from your uploaded documents — powered by GPT-4o-mini with grounded, cited responses from Azure AI Search.
